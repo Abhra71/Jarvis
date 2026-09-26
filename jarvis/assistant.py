@@ -23,6 +23,18 @@ log = logging.getLogger(__name__)
 # Words that make an "open …" / "search …" request too rich for the offline rules.
 _NEEDS_AI = re.compile(r"\b(profile|account|tabs?|window|and|then|close|in my|on my|on youtube|on amazon)\b")
 
+_SECRET_CONTEXT = re.compile(r"\b(code|otp|one[- ]time|password|passcode|pin|verification|cvv|card|account number)\b", re.I)
+_DIGITS = re.compile(r"\b\d[\d -]{2,}\d\b")
+
+
+def redact_secrets(reply: str) -> str:
+    """Never say codes/passwords out loud. On 26 Sep Jarvis read a GitHub verification code from Gmail;
+    enforced here in code, not only by asking the AI."""
+    if _SECRET_CONTEXT.search(reply) and _DIGITS.search(reply):
+        return _DIGITS.sub("(hidden)", reply)
+    return reply
+
+
 # Things Whisper tends to "hear" in silence or background noise.
 _HALLUCINATIONS = {"", "you", "thank you", "thanks for watching", "bye", "okay", "hmm"}
 
@@ -81,6 +93,7 @@ class Assistant:
         """Text in, spoken reply out. Used by both voice mode and --text mode."""
         usage.begin_turn(text)
         route, reply = self._handle(text)
+        reply = redact_secrets(reply)
         usage.end_turn(route, reply)
         log.info("Handled by %s", route)
         return reply

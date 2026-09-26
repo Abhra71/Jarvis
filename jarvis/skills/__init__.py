@@ -52,6 +52,10 @@ _CHAT_APPS = ("whatsapp", "telegram", "discord", "slack", "messenger", "instagra
               "signal", "mail")
 
 
+# These don't change what's on screen, so a screenshot taken before them is still valid for clicking.
+_READ_ONLY_TOOLS = {"find_files", "list_folder", "read_text_file"}
+
+
 def needs_confirmation(name: str, args: dict, front_window) -> str | None:
     """If this action is the kind that can't be taken back, describe it; else None."""
     if name == "click":
@@ -80,6 +84,7 @@ class Skills:
         self.calls_made = 0  # lets the assistant tell whether the AI already did something this turn
         self.cancel = threading.Event()  # set when the user says "Hey Jarvis" mid-task: stop at the next step
         self.confirmed = False  # the user just said "yes" to Jarvis's question: risky actions allowed this turn
+        self.screen_fresh = False  # a screenshot was taken and nothing has changed the screen since
         self.on_tool: Callable[[str], None] = lambda name: None  # the assistant uses this to update the tray icon
         step = config["volume"]["step"]
 
@@ -204,14 +209,24 @@ class Skills:
             log.info("Blocked %s(%s): %s, needs the user's yes", name, args, risk)
             return (f"Needs confirmation: this would {risk}. Nothing was done. Ask the user one short yes/no "
                     f"question, and do it only after they say yes.")
+        if name == "click" and not self.screen_fresh:
+            # Enforced in code: a click must be aimed at what's on screen NOW. On 26 Sep a click aimed at
+            # a YouTube window landed on Gmail (YouTube had opened behind it), and "1,2,4" became 3 blind clicks.
+            log.info("Blocked click(%s): no fresh screenshot", args)
+            return "Not clicked: look_at_screen first. The screen may have changed since the last look."
         log.info("Tool %s(%s)", name, args)
         self.calls_made += 1
         # The browser's scroll actions use the mouse too, so show them as mouse use.
         kind = "scroll" if name == "browser" and str((args or {}).get("action", "")).startswith("scroll") else name
         usage.action(kind)
         self.on_tool(kind)
+        if name not in _READ_ONLY_TOOLS:
+            self.screen_fresh = False  # anything else may change what's on screen
         try:
-            return tool.fn(**(args or {}))
+            result = tool.fn(**(args or {}))
+            if name == "look_at_screen":
+                self.screen_fresh = True
+            return result
         except (mouse.UserTookOver, mouse.Cancelled):
             raise  # stop the whole request, not just this step
         except PermissionError as e:

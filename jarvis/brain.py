@@ -46,6 +46,9 @@ You act only through the tools, like a person at the keyboard and mouse; the use
   apps, windows and tabs needs no confirmation. Never type passwords or card numbers.
 - If the tool calls you're making finish the request, include your short reply text in the same response.
 - "It", "that tab" = what you did last or the front window. If unclear, ask briefly.
+- If the request doesn't make sense (e.g. just numbers, a garbled phrase), ask what they meant. Don't act.
+- Never read out verification codes, one-time passwords, passwords, card or account numbers you see on
+  screen; say that one is shown, without the digits.
 
 Time: {now}
 Front window: {front}
@@ -64,7 +67,7 @@ def load_api_key(name: str = "GEMINI_API_KEY") -> str | None:
 
 
 _FAILURE_STARTS = ("error", "not allowed", "unknown", "no ", "i couldn't", "i don't", "sorry", "i can only",
-                   "needs confirmation")
+                   "needs confirmation", "not clicked")
 _YES = re.compile(r"^\s*(yes|yeah|yep|yup|sure|ok|okay|go ahead|do it|confirm|confirmed|please do|"
                   r"send it|buy it|post it|delete it|haan|ha)\b", re.I)
 
@@ -304,6 +307,7 @@ class Brain:
         # A risky action (send, buy, delete…) is only allowed when this message is a "yes" to the
         # question Jarvis just asked. Decided here in code, not left to the AI.
         self.skills.confirmed = _is_yes(text) and self._just_asked()
+        self.skills.screen_fresh = False  # time has passed since any earlier screenshot
         try:
             return self._ask_any(text)
         except mouse.UserTookOver:

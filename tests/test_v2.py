@@ -433,6 +433,7 @@ class ConfirmationTest(unittest.TestCase):
             self.assertTrue(blocked.startswith("Needs confirmation"))
             click.assert_not_called()
             s.confirmed = True
+            s.screen_fresh = True  # (it has looked at the screen)
             self.assertEqual(s.call("click", {"x": 1, "y": 1, "target": "Send button"}), "Clicked.")
 
     def test_yes_only_counts_after_a_question(self):
@@ -452,6 +453,34 @@ class ConfirmationTest(unittest.TestCase):
         b.ask("yes send it")
         self.assertFalse(seen["yes send it"])  # Jarvis didn't just ask anything
         self.assertFalse(b.skills.confirmed)  # and it never stays switched on
+
+
+class SafetyTest(unittest.TestCase):
+    def test_codes_are_never_spoken(self):
+        from jarvis.assistant import redact_secrets
+
+        said = 'It shows a Gmail message with the verification code "55135929" highlighted.'
+        self.assertNotIn("55135929", redact_secrets(said))
+        self.assertIn("(hidden)", redact_secrets(said))
+        self.assertNotIn("4111", redact_secrets("Your card number is 4111 1111 1111 1111."))
+        # ordinary numbers stay
+        self.assertEqual(redact_secrets("It's 2026 and the volume is 40 percent."),
+                         "It's 2026 and the volume is 40 percent.")
+
+    def test_click_needs_a_fresh_look(self):
+        from jarvis.skills import Skills
+
+        with mock.patch("jarvis.skills.AppLauncher"), mock.patch("jarvis.skills.Browser"):
+            s = Skills({"volume": {"step": 10}, "apps": {}}, announce=print)
+        with mock.patch("jarvis.skills.mouse.click", return_value="Clicked.") as click, \
+                mock.patch("jarvis.skills.desktop.screenshot_jpeg", return_value=b"jpg"), \
+                mock.patch("jarvis.skills.desktop.front_window", return_value="chrome: x"):
+            self.assertTrue(s.call("click", {"x": 1, "y": 1, "target": "1"}).startswith("Not clicked"))
+            s.call("look_at_screen", {})
+            self.assertEqual(s.call("click", {"x": 1, "y": 1, "target": "video"}), "Clicked.")
+            # a second click without looking again (the "1,2,4" case) is refused
+            self.assertTrue(s.call("click", {"x": 2, "y": 1, "target": "2"}).startswith("Not clicked"))
+            self.assertEqual(click.call_count, 1)
 
 
 class RoutingTest(unittest.TestCase):
