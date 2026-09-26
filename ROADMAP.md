@@ -58,6 +58,18 @@ Gemini Lite models hang on ~half of requests.
 - [x] Speech-to-text: command hints + beam size 3 (no measured cost; real benefit unproven)
 - Open question: did Jarvis's voice come through the headphones, and did music keep full quality?
 
+### 7. Fixes from the chess session (26 Sep, 20:15–20:24)
+- [x] Freeze: sound playback and voice download have time limits (Jarvis went silent for 6 minutes)
+- [x] Screen requests send a screenshot with the first AI request (one round trip less)
+- [x] click_pair: a chess move / drag is one step from one look, not look-click-look-click
+- [x] The screen check runs after the *last* click (up to 2), so moves aren't claimed unseen
+- [x] Replies say the outcome ("Moved the pawn to f4"), not page titles
+- [x] Speech: noise dropped (Whisper "heard" its own hint: "Open Chrome." ×4); repeated sentences removed;
+      chess words in the hints; shaky transcripts are marked so the AI asks instead of guessing
+- [x] "Open chess" opens chess.com; "play …" unmutes first (Aari Aari played silently after an old "mute")
+- Tip: say moves as "pawn f2 to f4" (letter first); "2F to 4F" confuses it
+- To do: close a named tab ("close the chess tab" closed the wrong one); measure Gemini speed settings
+
 ## Next / ideas
 - Rotate the Gemini key (user)
 - Follow-ups spoken while Jarvis is still talking get cut off (by design, it ignores its own voice).

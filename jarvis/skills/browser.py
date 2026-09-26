@@ -36,6 +36,8 @@ SITES = {
     "whatsapp web": "https://web.whatsapp.com",
     "google maps": "https://maps.google.com",
     "maps": "https://maps.google.com",
+    "chess": "https://www.chess.com",
+    "chess.com": "https://www.chess.com",
 }
 
 SEARCH_URLS = {

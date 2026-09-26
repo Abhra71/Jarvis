@@ -89,16 +89,17 @@ class Assistant:
             return app in SITES or self.skills.apps.find_exact(app) is not None
         return True
 
-    def handle_text(self, text: str) -> str:
-        """Text in, spoken reply out. Used by both voice mode and --text mode."""
+    def handle_text(self, text: str, unsure: bool = False) -> str:
+        """Text in, spoken reply out. Used by both voice mode and --text mode.
+        `unsure`: speech recognition wasn't confident, so the AI is told to ask rather than guess."""
         usage.begin_turn(text)
-        route, reply = self._handle(text)
+        route, reply = self._handle(text, unsure)
         reply = redact_secrets(reply)
         usage.end_turn(route, reply)
         log.info("Handled by %s", route)
         return reply
 
-    def _handle(self, text: str) -> tuple[str, str]:
+    def _handle(self, text: str, unsure: bool = False) -> tuple[str, str]:
         """Returns (who handled it, reply)."""
         intent = nlu.parse(text)
         log.info("Rules: %s", intent)
@@ -115,7 +116,7 @@ class Assistant:
 
         calls_before = self.skills.calls_made
         try:
-            reply = self.brain.ask(text)
+            reply = self.brain.ask(text, unsure=unsure)
             return self.brain.answered_by or "gemini", reply
         except BrainUnavailable as e:
             if self.skills.calls_made != calls_before:
@@ -240,7 +241,7 @@ class Assistant:
                     self.speaker.say("Sorry, I didn't catch that.")
                 return
 
-            reply = self._handle_while_watching(text)
+            reply = self._handle_while_watching(text, self.stt.unsure)
             self._set(State.SPEAKING)
             self.speaker.say(reply)
 
@@ -260,7 +261,7 @@ class Assistant:
             self.mic.drain()  # drop our own voice before listening again
             self._set(State.LISTENING)
 
-    def _handle_while_watching(self, text: str) -> str:
+    def _handle_while_watching(self, text: str, unsure: bool = False) -> str:
         """Run the request, while a side thread keeps listening for "Hey Jarvis" so you can interrupt."""
         done = threading.Event()
 
@@ -280,7 +281,7 @@ class Assistant:
         watcher = threading.Thread(target=watch, name="interrupt-watch", daemon=True)
         watcher.start()
         try:
-            return self.handle_text(text)
+            return self.handle_text(text, unsure)
         finally:
             done.set()
             watcher.join(timeout=1)

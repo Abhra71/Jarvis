@@ -69,6 +69,16 @@ def mute(on: bool) -> str:
     return "Muted everything except me." if on else "Unmuted."
 
 
+def others_muted() -> bool:
+    """Are other apps silenced (by "mute", or the whole PC muted)?"""
+    if _apps_muted_by_jarvis:
+        return True
+    try:
+        return bool(_endpoint().GetMute())
+    except Exception:
+        return False
+
+
 def ensure_jarvis_audible():
     """Called before Jarvis makes a sound. If the whole PC is muted (keyboard key, taskbar), switch to
     'everything else muted' instead, so the user still hears Jarvis but nothing else comes back on."""

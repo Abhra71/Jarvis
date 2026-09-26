@@ -17,6 +17,7 @@ import httpx
 from .config import ROOT
 from .groq_backup import GroqBackup
 from .skills import Skills, desktop, mouse
+from .skills import volume
 from .usage import usage
 
 log = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ You act only through the tools, like a person at the keyboard and mouse; the use
 - Never read out verification codes, one-time passwords, passwords, card or account numbers you see on
   screen; say that one is shown, without the digits.
 
-Time: {now}
+Time: {now}{sound}
 Front window: {front}
 Open windows: {windows}
 Chrome profiles (pass the folder as `profile`): {profiles}"""
@@ -107,6 +108,7 @@ _LAUNCHING_TOOLS = {"open_app", "open_website", "open_chrome", "open_path", "web
 _SCREEN_REQUEST = re.compile(
     r"\b(click|tap|select|choose|press the|drag|move|pawn|knight|bishop|rook|queen|king|castle|chess|video|"
     r"button|link|on (the |my )?screen|this page|what do you see|what's on|read (this|the screen|it))\b", re.I)
+_PLAY = re.compile(r"\b(play|listen to|put on|watch)\b", re.I)
 _CLICKS = {"click", "click_pair", "type_text", "press_key"}
 _QUESTION = re.compile(r"\?\s*$|^\s*(what|who|when|where|which|why|how|is|are|was|were|did|does|do|can|tell me)\b",
                        re.I)
@@ -236,6 +238,7 @@ class Brain:
             front = windows = "unknown"
         return SYSTEM_PROMPT.format(
             now=datetime.now().strftime("%A %d %B %Y, %I:%M %p"),
+            sound="\nSound: other apps are MUTED (volume unmute to hear them)" if volume.others_muted() else "",
             front=front, windows=windows,
             profiles=self.skills.browser.profile_summary() or "none")
 
@@ -320,9 +323,15 @@ class Brain:
         last.raise_for_status()
         raise BrainUnavailable("unexpected Gemini response")
 
-    def ask(self, text: str) -> str:
+    def ask(self, text: str, unsure: bool = False) -> str:
         if not self.available:
             raise BrainUnavailable("no API key")
+        if _PLAY.search(text) and volume.others_muted():
+            # 26 Sep: "play Aari Aari" played silently because of a "mute" from an hour before.
+            log.info("Unmuting: they asked to play something while other apps were muted")
+            volume.mute(False)
+        if unsure:
+            text += "\n(Speech recognition was unsure of these words. If they don't clearly make sense, ask.)"
         self._trim_history()
         mouse.reset_takeover()
         # A risky action (send, buy, delete…) is only allowed when this message is a "yes" to the

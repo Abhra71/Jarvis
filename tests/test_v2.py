@@ -588,7 +588,7 @@ class RoutingTest(unittest.TestCase):
 
         self.a.skills.calls_made = 0
 
-        def act_then_fail(text):
+        def act_then_fail(text, unsure=False):
             self.a.skills.calls_made += 1  # the AI already clicked/typed something…
             raise BrainUnavailable("Gemini is busy")
 
@@ -609,3 +609,32 @@ class RoutingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HearingTest(unittest.TestCase):
+    def test_repeated_phrases_are_noise(self):
+        from jarvis.stt import clean_transcript
+        self.assertEqual(clean_transcript("Open Chrome. Open Chrome. Open Chrome. Open Chrome."), "")
+        self.assertEqual(clean_transcript("Close this tab. Close this tab."), "Close this tab.")
+        self.assertEqual(clean_transcript("Open YouTube. Play lofi."), "Open YouTube. Play lofi.")
+        self.assertEqual(clean_transcript(""), "")
+
+    def test_open_chess_goes_to_chess_com(self):
+        from jarvis import nlu
+        from jarvis.skills.browser import SITES
+        intent = nlu.parse("Open Chess.")
+        self.assertEqual(intent.name, "open_app")
+        self.assertEqual(SITES[intent.slots["app"]], "https://www.chess.com")
+
+    def test_play_unmutes_and_unsure_words_are_flagged(self):
+        from jarvis import brain
+        with mock.patch.object(brain, "load_api_key", side_effect=lambda name="GEMINI_API_KEY": "k" if name == "GEMINI_API_KEY" else None):
+            b = brain.Brain({"model": "lite", "fallback_models": []}, _fake_skills())
+        b.http = mock.Mock()
+        b.http.post.return_value = _response([{"text": "Playing it."}])
+        with mock.patch.object(brain.volume, "others_muted", return_value=True), \
+                mock.patch.object(brain.volume, "mute") as mute:
+            b.ask("play Aari Aari", unsure=True)
+        mute.assert_called_once_with(False)
+        sent = b.http.post.call_args.kwargs["json"]["contents"][-1]["parts"][0]["text"]
+        self.assertIn("unsure", sent)
