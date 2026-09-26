@@ -372,8 +372,27 @@ class SpeedTest(unittest.TestCase):
         self.assertIsNone(fast_reply("play the second video", ["click"], ["Left-clicked at 400,300."]))
         # failed action: the AI must hear about it
         self.assertIsNone(fast_reply("close notepad", ["window"], ["I don't see notepad open."]))
-        # the AI's own reply wins when it sent one
-        self.assertEqual(fast_reply("mute", ["mute"], ["Muted."], "Muted it."), "Muted it.")
+        # the AI's own reply wins when it sent a real sentence…
+        self.assertEqual(fast_reply("mute", ["volume"], ["Muted."], "Muted it now."), "Muted it now.")
+        # …but not a fragment like the ones Gemini sent on 26 Sep
+        self.assertEqual(fast_reply("close this tab", ["browser"], ["Closed the tab."], "hob"), "Closed the tab.")
+        # and never after a click, even with a nice sentence: clicks get checked on screen first
+        self.assertIsNone(fast_reply("open the github shortcut", ["click"], ["Left-clicked."], "Opened GitHub."))
+
+    def test_speakable(self):
+        from jarvis.brain import speakable
+
+        for junk in ["hob", "it", "thought", "à®©à¯", "Øª", "", "thought The URL is x"]:
+            self.assertFalse(speakable(junk), junk)
+        for ok in ["The capital of Japan is Tokyo.", "Closed the tab.", "Opened Chrome in your main profile.",
+                   "Paris.", "Joyful."]:
+            self.assertTrue(speakable(ok), ok)
+
+    def test_garbled_final_answer_gets_one_retry(self):
+        b = self._brain({"model": "lite", "fallback_models": []})
+        b.http = mock.Mock()
+        b.http.post.side_effect = [_response([{"text": "hob"}]), _response([{"text": "I couldn't find that shortcut."}])]
+        self.assertEqual(b.ask("open github from the shortcut"), "I couldn't find that shortcut.")
 
     def test_daily_limit_parks_model_for_an_hour(self):
         from jarvis.brain import _limit_seconds

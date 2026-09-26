@@ -93,18 +93,40 @@ _MULTI_STEP = re.compile(r"\b(and|then|after that|also|once)\b|,")
 
 
 def fast_reply(request: str, calls: list[str], results: list, said: str = "") -> str | None:
-    """If this round of actions finishes the request, the sentence to say now (skipping another AI round trip)."""
+    """If this round of actions finishes the request, the sentence to say now (skipping another AI round trip).
+
+    Only for simple finishing actions. Clicks, typing and looking always go back to the AI (and a click gets
+    checked on screen), even if the AI already wrote a reply: on 26 Sep that shortcut spoke garbage like
+    "hob" and "thought" right after clicks that had missed.
+    """
     if not calls or any(isinstance(r, dict) or _looks_failed(r) for r in results):
         return None
-    if said:  # the AI already wrote its reply alongside the actions
+    if not all(c in _FINISHING_TOOLS for c in calls):
+        return None
+    if speakable(said):  # the AI already wrote a proper reply alongside the actions
         return said
-    if all(c in _FINISHING_TOOLS for c in calls) and not _MULTI_STEP.search(request.lower()):
+    if not _MULTI_STEP.search(request.lower()):
         return " ".join(str(r) for r in results)
     return None
 
 
 def _clean(text: str) -> str:
+    text = re.sub(r"^\s*thought\s*\n", "", text)  # a leaked "thinking" label at the start of the reply
     return re.sub(r"[*_#`]+", "", text).strip()
+
+
+def speakable(text: str) -> bool:
+    """Is this a real sentence worth saying? Rejects fragments like "hob", "it", "thought" and garbled
+    characters that Gemini occasionally sends alongside its actions."""
+    t = (text or "").strip()
+    if not t or t.lower().startswith("thought"):
+        return False
+    ascii_letters = sum(c.isascii() and c.isalpha() for c in t)
+    if ascii_letters < 0.6 * sum(not c.isspace() for c in t):
+        return False
+    if len(t.split()) == 1:  # one-word answers ("Paris.", "Joyful.") are fine; fragments ("hob", "it") aren't
+        return ascii_letters >= 3 and (t[0].isupper() or t.endswith((".", "!", "?")))
+    return True
 
 
 def _limit_seconds(r: httpx.Response) -> int:
@@ -352,6 +374,7 @@ class Brain:
         t0 = time.monotonic()
         unchecked_click = False  # clicked since the last look at the screen
         verified = False         # the "look before you claim" check runs at most once per request
+        asked_again = False      # a garbled final answer gets one retry
 
         try:
             for _ in range(self.cfg.get("max_steps", 6)):
@@ -383,8 +406,18 @@ class Brain:
                             {"inlineData": {"mimeType": "image/jpeg",
                                             "data": base64.b64encode(shot["image_jpeg"]).decode()}}]})
                         continue
+                    if not speakable(said) and not said.lower().rstrip(".!") in ("done", "ok", "okay", "stopped"):
+                        if not asked_again:
+                            # Garbled or empty final answer ("hob", "thought"): ask once for a real one.
+                            asked_again = True
+                            log.warning("Unusable reply %r; asking the AI again", said[:40])
+                            turn.append({"role": "user", "parts": [{"text":
+                                "Your last reply was empty or garbled. Either carry on with the task using the "
+                                "tools, or tell the user in one clear English sentence what happened."}]})
+                            continue
+                        return "Sorry, I lost track of that. Could you say it again?"
                     log.info("Gemini answered in %.1fs", time.monotonic() - t0)
-                    return said or "Done."
+                    return said
                 for c in calls:
                     if c["name"] == "click":
                         unchecked_click = True
