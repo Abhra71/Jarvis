@@ -35,7 +35,9 @@ timeout_seconds = 10         # per AI request (normal is ~2s, ~4s with a screens
 slow_backoff_seconds = 180   # after Gemini stalls, ask Groq first for this long, then give Gemini another chance
 # The newest Lite models often hang (4-6 of 8 requests in a test). If the main model hasn't answered after
 # hedge_after_seconds, the request also goes to hedge_model (older, never hung) and the first answer wins.
-hedge_after_seconds = 2.5
+# 26 Sep session: at 2.5 s a backup copy went out on 18 of 29 requests but won only once (normal answers
+# with a screenshot take 3-5 s), wasting free quota. 5 s still catches real hangs.
+hedge_after_seconds = 5
 hedge_model = "gemini-flash-lite-latest"
 
 [stt]
