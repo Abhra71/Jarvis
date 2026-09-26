@@ -227,15 +227,50 @@ class Assistant:
                     self.speaker.say("Sorry, I didn't catch that.")
                 return
 
-            reply = self.handle_text(text)
+            reply = self._handle_while_watching(text)
             self._set(State.SPEAKING)
             self.speaker.say(reply)
+
+            if self.skills.cancel.is_set():
+                # "Hey Jarvis" while busy: stopped, now take the new command with a full listening window.
+                self.skills.cancel.clear()
+                self.mic.drain()
+                self._set(State.LISTENING)
+                self.speaker.chime("listen")
+                self.mic.drain()
+                first = True
+                continue
 
             if not listen.get("followup_seconds"):
                 return
             first = False
             self.mic.drain()  # drop our own voice before listening again
             self._set(State.LISTENING)
+
+    def _handle_while_watching(self, text: str) -> str:
+        """Run the request, while a side thread keeps listening for "Hey Jarvis" so you can interrupt."""
+        done = threading.Event()
+
+        def watch():
+            self.mic.drain()
+            self.wake.reset()
+            while not done.is_set():
+                try:
+                    frame = self.mic.read(timeout=0.2)
+                except queue.Empty:
+                    continue
+                if self.wake.process(frame):
+                    log.info("Wake word while busy: stopping the current task")
+                    self.skills.cancel.set()
+                    return
+
+        watcher = threading.Thread(target=watch, name="interrupt-watch", daemon=True)
+        watcher.start()
+        try:
+            return self.handle_text(text)
+        finally:
+            done.set()
+            watcher.join(timeout=1)
 
     def stop(self):
         self.stopping.set()

@@ -67,7 +67,9 @@ class ProfileTest(unittest.TestCase):
 
 
 def _fake_skills():
+    import threading
     skills = mock.MagicMock()
+    skills.cancel = threading.Event()  # a real "stop" switch (a mock would always look "set")
     skills.declarations.return_value = []
     skills.browser.profile_summary.return_value = "1. Work [folder: Profile 2]"
     skills.call.return_value = "Opened youtube.com in the Work profile."
@@ -341,6 +343,23 @@ class SpeedTest(unittest.TestCase):
         self.assertIn(mock.call("look_at_screen", {}), b.skills.call.call_args_list)
         third = b.http.post.call_args_list[2].kwargs["json"]["contents"][-1]["parts"]
         self.assertIn("inlineData", third[1])
+
+    def test_hey_jarvis_mid_task_stops_at_the_next_step(self):
+        import threading
+        from jarvis.skills import mouse
+
+        b = self._brain({"model": "lite", "fallback_models": []})
+        b.skills.cancel = threading.Event()
+
+        def call(name, args):
+            b.skills.cancel.set()  # the user says "Hey Jarvis" while the first step runs…
+            return "Left-clicked."
+
+        b.skills.call.side_effect = call
+        b.http = mock.Mock()
+        b.http.post.return_value = _response([{"functionCall": {"name": "click", "args": {"x": 1, "y": 1}}}])
+        self.assertEqual(b.ask("click through all the videos"), "Stopped.")
+        self.assertEqual(b.http.post.call_count, 1)  # …so no further steps were taken
 
     def test_fast_reply_rules(self):
         from jarvis.brain import fast_reply

@@ -26,6 +26,10 @@ class UserTookOver(Exception):
     """The user moved the mouse during an action: stop everything."""
 
 
+class Cancelled(Exception):
+    """The user said "Hey Jarvis" while Jarvis was busy: stop at the next step."""
+
+
 class _Point(ctypes.Structure):
     _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
 

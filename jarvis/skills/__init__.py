@@ -6,6 +6,7 @@ Every tool returns a short sentence describing what happened.
 """
 
 import logging
+import threading
 from dataclasses import dataclass
 from typing import Callable
 
@@ -50,6 +51,7 @@ class Skills:
         self.browser = Browser()
         self.timers = Timers(announce)
         self.calls_made = 0  # lets the assistant tell whether the AI already did something this turn
+        self.cancel = threading.Event()  # set when the user says "Hey Jarvis" mid-task: stop at the next step
         self.on_tool: Callable[[str], None] = lambda name: None  # the assistant uses this to update the tray icon
         step = config["volume"]["step"]
 
@@ -166,6 +168,8 @@ class Skills:
         tool = self.tools.get(name)
         if not tool:
             return f"Unknown tool {name}."
+        if self.cancel.is_set():
+            raise mouse.Cancelled()
         log.info("Tool %s(%s)", name, args)
         self.calls_made += 1
         # The browser's scroll actions use the mouse too, so show them as mouse use.
@@ -174,7 +178,7 @@ class Skills:
         self.on_tool(kind)
         try:
             return tool.fn(**(args or {}))
-        except mouse.UserTookOver:
+        except (mouse.UserTookOver, mouse.Cancelled):
             raise  # stop the whole request, not just this step
         except PermissionError as e:
             return f"Not allowed: {e}"

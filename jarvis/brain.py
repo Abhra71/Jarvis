@@ -277,6 +277,9 @@ class Brain:
         except mouse.UserTookOver:
             log.info("User moved the mouse; stopped")  # the partial turn is already closed in history
             return "You moved the mouse, so I stopped."
+        except mouse.Cancelled:
+            log.info("User said Hey Jarvis mid-task; stopped")
+            return "Stopped."
 
     def _ask_any(self, text: str) -> str:
         # While Gemini is stalling, go to Groq first (~0.7s) instead of waiting on Gemini every time.
@@ -331,6 +334,8 @@ class Brain:
 
         try:
             for _ in range(self.cfg.get("max_steps", 6)):
+                if self.skills.cancel.is_set():
+                    raise mouse.Cancelled()
                 data = self._generate(self.history + turn)
                 cands = data.get("candidates") or []
                 if not cands or "content" not in cands[0]:
