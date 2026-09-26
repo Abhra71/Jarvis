@@ -151,7 +151,7 @@ class Assistant:
     def load_voice(self):
         self._set(State.LOADING)
         self.speaker.prepare()
-        self.stt = Transcriber(self.config["stt"])
+        self.stt = Transcriber(self.config["stt"], vocabulary=self.skills.apps.names_for_speech())
         self.wake = WakeWordDetector(self.config["wakeword"])
         self.mic = Mic(self.config["audio"]["sample_rate"], self.config["audio"]["input_device"])
 

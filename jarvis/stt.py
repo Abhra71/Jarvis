@@ -19,7 +19,9 @@ HINT = "Open Chrome. Volume 40. Volume up. Mute. Search for Python tutorials. Se
 
 
 class Transcriber:
-    def __init__(self, cfg: dict):
+    def __init__(self, cfg: dict, vocabulary: list[str] | None = None):
+        # Names of the user's installed apps, so e.g. "Claude" isn't heard as "Cloud".
+        self.hint = HINT + (" Apps: " + ", ".join(w.title() for w in vocabulary) + "." if vocabulary else "")
         log.info("Loading Whisper model %s (first run downloads it)...", cfg["model"])
         self.model = WhisperModel(
             cfg["model"],
@@ -34,7 +36,7 @@ class Transcriber:
             audio,
             language="en",
             beam_size=1,
-            initial_prompt=HINT,
+            initial_prompt=self.hint,
             condition_on_previous_text=False,
         )
         text = " ".join(s.text for s in segments).strip()

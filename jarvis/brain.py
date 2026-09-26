@@ -26,7 +26,8 @@ API = "https://generativelanguage.googleapis.com/v1beta"
 # Kept compact: it's sent with every request, and the free tiers count tokens.
 SYSTEM_PROMPT = """You are Jarvis, a voice assistant on the user's Windows PC. Replies are read aloud: one or two \
 short spoken sentences, no markdown/lists/URLs. The user's words come from speech recognition; assume the most \
-sensible meaning. Answer general questions briefly from your own knowledge (no live data: offer a web search).
+sensible meaning. Answer general-knowledge questions directly from what you know, without tools or searching.
+Only search when they ask you to, or when it needs live data (today's news, weather, scores, prices).
 
 You act only through the tools, like a person at the keyboard and mouse; the user watches the screen.
 - Do only what was asked, nothing extra. Afterwards say exactly what you did or opened, by its real name.
@@ -325,6 +326,8 @@ class Brain:
     def _ask_gemini(self, text: str) -> str:
         turn = [{"role": "user", "parts": [{"text": text}]}]
         t0 = time.monotonic()
+        unchecked_click = False  # clicked since the last look at the screen
+        verified = False         # the "look before you claim" check runs at most once per request
 
         try:
             for _ in range(self.cfg.get("max_steps", 6)):
@@ -342,8 +345,25 @@ class Brain:
                 calls = [p["functionCall"] for p in content["parts"] if "functionCall" in p]
                 said = _clean(" ".join(p.get("text", "") for p in content["parts"] if not p.get("thought")))
                 if not calls:
+                    if unchecked_click and not verified:
+                        # It clicked and is about to report without looking. Make it check first,
+                        # so it can't say "Chemistry 2026 is open" when 2024 opened.
+                        verified = True
+                        log.info("Checking the screen before Jarvis reports a click result")
+                        shot = self.skills.call("look_at_screen", {})
+                        turn.append({"role": "user", "parts": [
+                            {"text": "Before replying, check this screenshot of the result. Say only what it "
+                                     "actually shows, using the exact title, or say plainly that it didn't work."},
+                            {"inlineData": {"mimeType": "image/jpeg",
+                                            "data": base64.b64encode(shot["image_jpeg"]).decode()}}]})
+                        continue
                     log.info("Gemini answered in %.1fs", time.monotonic() - t0)
                     return said or "Done."
+                for c in calls:
+                    if c["name"] == "click":
+                        unchecked_click = True
+                    elif c["name"] == "look_at_screen":
+                        unchecked_click = False
 
                 parts, images, results = [], [], []
                 for call in calls:

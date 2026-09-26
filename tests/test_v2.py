@@ -322,6 +322,26 @@ class SpeedTest(unittest.TestCase):
         self.assertEqual(b.ask("capital of chile"), "Lima.")  # next request: straight to Groq
         self.assertEqual(b.http.post.call_count, gemini_calls)  # Gemini wasn't tried again yet
 
+    def test_click_must_be_checked_before_claiming_success(self):
+        b = self._brain({"model": "lite", "fallback_models": []})
+
+        def call(name, args):
+            if name == "look_at_screen":
+                return {"text": "Screenshot attached.", "image_jpeg": b"jpg"}
+            return "Left-clicked."
+
+        b.skills.call.side_effect = call
+        b.http = mock.Mock()
+        b.http.post.side_effect = [
+            _response([{"functionCall": {"name": "click", "args": {"x": 400, "y": 300}}}]),
+            _response([{"text": "Chemistry 2026 is open."}]),         # tries to claim without looking…
+            _response([{"text": "Complete Chemistry 2024 opened."}]),  # …after the forced look: the truth
+        ]
+        self.assertEqual(b.ask("open chemistry 2026"), "Complete Chemistry 2024 opened.")
+        self.assertIn(mock.call("look_at_screen", {}), b.skills.call.call_args_list)
+        third = b.http.post.call_args_list[2].kwargs["json"]["contents"][-1]["parts"]
+        self.assertIn("inlineData", third[1])
+
     def test_fast_reply_rules(self):
         from jarvis.brain import fast_reply
 

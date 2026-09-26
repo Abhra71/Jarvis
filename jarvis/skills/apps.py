@@ -78,10 +78,25 @@ class AppLauncher:
         match = process.extractOne(spoken, candidates.keys(), scorer=fuzz.ratio, score_cutoff=88)
         return (match[0], candidates[match[0]]) if match else None
 
+    def closest(self, spoken: str, n: int = 4) -> list[str]:
+        """Nearest installed app names, for when speech recognition mangles a name ("Cloud" for "Claude")."""
+        candidates = {**self.start_apps, **self.aliases}
+        return [m[0] for m in process.extract(spoken.lower(), candidates.keys(), scorer=fuzz.WRatio, limit=n)
+                if m[1] >= 45]
+
+    def names_for_speech(self, limit: int = 40) -> list[str]:
+        """Installed app names worth teaching the speech recogniser (skips Windows/system entries)."""
+        skip = ("microsoft", "windows", "setup", "settings", "update", "driver", "control panel", "manual",
+                "recovery", "tool", "service", "(", "x86", "x64")
+        names = [n for n in self.start_apps if 2 < len(n) <= 22 and not any(s in n for s in skip)]
+        return sorted(names, key=len)[:limit]
+
     def open(self, spoken: str) -> str:
         found = self.find(spoken)
         if not found:
-            return f"Sorry, I couldn't find an app called {spoken}."
+            near = self.closest(spoken)
+            hint = f" Closest installed apps: {', '.join(near)}." if near else ""
+            return f"Sorry, I couldn't find an app called {spoken}.{hint}"
         name, target = found
         log.info("Opening %r -> %s", name, target)
         _allow_foreground()

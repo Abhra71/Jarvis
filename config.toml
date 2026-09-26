@@ -68,3 +68,6 @@ settings = "ms-settings:"
 paint = "mspaint.exe"
 "vs code" = "code"
 "visual studio code" = "code"
+# Speech recognition often hears "Claude" as "Cloud"; both open the Claude desktop app.
+claude = "shell:AppsFolder\\Claude_pzs8sxrjxfjjc!Claude"
+cloud = "shell:AppsFolder\\Claude_pzs8sxrjxfjjc!Claude"
