@@ -47,6 +47,17 @@ Gemini Lite models hang on ~half of requests.
 - [x] Hard, code-level confirmation before send/post/buy/delete-type clicks and Enter in chat/mail apps
 - [x] Git repository, pushed to https://github.com/Abhra71/Jarvis
 
+### 6. Fixes from the headphone session (26 Sep, 19:21–19:37)
+- [x] Chrome profile nicknames: "main"/"personal", "AI", "backup" (3 profiles are all named "Abhra")
+- [x] Never speak garbled AI replies ("hob", "thought", broken characters); garbled answers get one retry
+- [x] Code-enforced: look at the screen before every click (a click landed on Gmail; "1,2,4" = 3 blind clicks)
+- [x] Codes/OTPs/passwords/card numbers are replaced with "(hidden)" before speaking
+- [x] Typing is checked on screen before claiming success; "cut" key; close_all windows
+- [x] Questions answered via search are read from the results, not from memory
+- [x] Backup Gemini request after 5 s (was 2.5 s: fired 18/29 times, won once)
+- [x] Speech-to-text: command hints + beam size 3 (no measured cost; real benefit unproven)
+- Open question: did Jarvis's voice come through the headphones, and did music keep full quality?
+
 ## Next / ideas
 - Rotate the Gemini key (user)
 - Follow-ups spoken while Jarvis is still talking get cut off (by design, it ignores its own voice).

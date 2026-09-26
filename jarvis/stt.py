@@ -14,8 +14,11 @@ from .config import MODELS_DIR  # noqa: E402
 
 log = logging.getLogger(__name__)
 
-# Nudges Whisper towards the words our commands actually use.
-HINT = "Open Chrome. Volume 40. Volume up. Mute. Search for Python tutorials. Set a timer for 5 minutes."
+# Nudges Whisper towards the words our commands actually use. The second line holds commands it
+# misheard on 26 Sep ("Close this one" -> "North this one", "Scroll" -> "Scrawl").
+HINT = ("Open Chrome. Volume 40. Volume up. Mute. Search for Python tutorials. Set a timer for 5 minutes. "
+        "Close this one. Close this tab. Close both of them. Scroll to the bottom. Go back. Next tab. "
+        "Open my main profile.")
 
 
 class Transcriber:
@@ -35,7 +38,7 @@ class Transcriber:
         segments, _ = self.model.transcribe(
             audio,
             language="en",
-            beam_size=1,
+            beam_size=3,  # weighs a few alternatives; measured at no extra time on this PC
             initial_prompt=self.hint,
             condition_on_previous_text=False,
         )
