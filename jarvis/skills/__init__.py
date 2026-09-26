@@ -75,7 +75,7 @@ class Skills:
     def __init__(self, config: dict, announce: Callable[[str], None]):
         self.config = config
         self.apps = AppLauncher(config.get("apps", {}))
-        self.browser = Browser()
+        self.browser = Browser(config.get("chrome_profiles", {}))
         self.timers = Timers(announce)
         self.calls_made = 0  # lets the assistant tell whether the AI already did something this turn
         self.cancel = threading.Event()  # set when the user says "Hey Jarvis" mid-task: stop at the next step

@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import subprocess
 import winreg
 from dataclasses import dataclass
@@ -82,15 +83,28 @@ def load_profiles(local_state: Path = LOCAL_STATE) -> list[Profile]:
     return sorted(profiles, key=lambda p: p.name.casefold())
 
 
-def find_profile(profiles: list[Profile], spoken: str | None) -> Profile | None:
-    """'work', 'my work profile', 'third', 'profile 3', or an email -> Profile."""
+_FILLER_WORDS = {"profile", "account", "my", "the", "chrome", "google", "one", "in", "open"}
+
+
+def find_profile(profiles: list[Profile], spoken: str | None, nicknames: dict[str, str] | None = None) -> Profile | None:
+    """'main', 'work', 'my work profile', 'third', 'profile 3', or an email -> Profile.
+
+    Nicknames (from config.toml [chrome_profiles]) come first: several of this user's profiles
+    are all named "Abhra", and speech has no capital letters, so names alone can't tell them apart.
+    """
     if not spoken or not profiles:
         return None
     for p in profiles:  # exact folder name, e.g. "Profile 2" as Gemini passes it
         if spoken.strip().lower() == p.directory.lower():
             return p
 
-    s = spoken.lower().replace("profile", "").replace("account", "").replace("my", "").strip()
+    words = [w for w in re.findall(r"[a-z0-9]+", spoken.lower()) if w not in _FILLER_WORDS]
+    s = " ".join(words)
+    for nick, folder in (nicknames or {}).items():
+        if s == nick.lower() or f" {nick.lower()} " in f" {s} ":
+            hit = next((p for p in profiles if p.directory.lower() == folder.lower()), None)
+            if hit:
+                return hit
     for word, n in _ORDINALS.items():
         if word in s.split() and n <= len(profiles):
             return profiles[n - 1]
@@ -121,18 +135,27 @@ def chrome_path() -> str | None:
 
 
 class Browser:
-    def __init__(self):
+    def __init__(self, nicknames: dict[str, str] | None = None):
         self.profiles = load_profiles()
+        self.nicknames = {k.lower(): v for k, v in (nicknames or {}).items()}  # "main" -> "Default"
         self.chrome = chrome_path()
         log.info("Chrome: %s, %d profiles", self.chrome or "not found", len(self.profiles))
 
+    def find(self, spoken: str | None) -> Profile | None:
+        return find_profile(self.profiles, spoken, self.nicknames)
+
     def profile_summary(self) -> str:
-        return "; ".join(f"{i}. {p.describe()} [folder: {p.directory}]" for i, p in enumerate(self.profiles, 1))
+        out = []
+        for i, p in enumerate(self.profiles, 1):
+            nicks = [n for n, folder in self.nicknames.items() if folder.lower() == p.directory.lower()]
+            also = f" nicknames: {', '.join(nicks)}" if nicks else ""
+            out.append(f"{i}. {p.describe()} [folder: {p.directory}]{also}")
+        return "; ".join(out)
 
     def open(self, url: str | None = None, profile: str | None = None) -> str:
         if url and not url.startswith(("http://", "https://")):
             url = SITES.get(url.lower().strip(), f"https://{url.strip()}")
-        prof = find_profile(self.profiles, profile)
+        prof = self.find(profile)
         if profile and not prof:
             return f"I couldn't find a Chrome profile called {profile}."
 
@@ -146,7 +169,8 @@ class Browser:
         else:
             os.startfile(url or "https://www.google.com")
 
-        where = f" in the {prof.name} profile" if prof else ""
+        nick = next((n for n, f in self.nicknames.items() if prof and f.lower() == prof.directory.lower()), None)
+        where = f" in your {nick} profile" if nick else (f" in the {prof.name} profile" if prof else "")
         what = url.split("//", 1)[-1].split("/", 1)[0].removeprefix("www.") if url else "Chrome"
         log.info("Opened %s%s", url or "Chrome", where)
         return f"Opened {what}{where}."

@@ -51,6 +51,15 @@ wake_reply = "Yes, my lord?"  # said when it hears "Hey Jarvis" ("" = soft chime
 [volume]
 step = 10                    # percent for "volume up" / "volume down"
 
+# Spoken nickname -> Chrome profile folder. Three profiles are all named "Abhra" and speech has no
+# capital letters, so say these instead: "open my main profile", "switch to the AI profile".
+# Folders: see the status page or `chrome://version` ("Profile Path") inside each profile.
+[chrome_profiles]
+main = "Default"          # ABHRA (abhrachakraborty21@...)
+personal = "Default"
+ai = "Profile 1"          # Abhra (gptclaudeusage@...)
+backup = "Profile 4"      # Abhra Chakraborty (abhrachakraborty5b@...)
+
 # Spoken name -> what to launch. Anything not listed here is looked up
 # in your Start Menu automatically, so "open spotify" works without an entry.
 [apps]

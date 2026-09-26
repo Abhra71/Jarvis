@@ -12,7 +12,7 @@ from . import nlu
 from .audio import Mic, record_utterance
 from .brain import Brain, BrainUnavailable
 from .skills import Skills
-from .skills.browser import SITES, find_profile
+from .skills.browser import SITES
 from .stt import Transcriber
 from .tts import Speaker
 from .usage import usage
@@ -69,7 +69,7 @@ class Assistant:
         if intent.name == "web_search":
             return False  # "search it here", "…in the address bar": the AI handles context far better
         if intent.name == "open_profile":
-            return find_profile(self.skills.browser.profiles, intent.slots["profile"]) is not None
+            return self.skills.browser.find(intent.slots["profile"]) is not None
         if intent.name == "open_app" and _NEEDS_AI.search(text.lower()):
             return False
         if intent.name == "open_app":
