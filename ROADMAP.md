@@ -69,7 +69,9 @@ Gemini Lite models hang on ~half of requests.
 - [x] "Open chess" opens chess.com; "play …" unmutes first (Aari Aari played silently after an old "mute")
 - Tip: say moves as "pawn f2 to f4" (letter first); "2F to 4F" confuses it
 - [x] "Close the chess tab" closes the tab with that name (it used to close the front tab)
-- To do: measure Gemini speed settings
+- [x] Measured (tools/ai_eval.py, 18 requests): default thinking 18/18, median 1.3 s; "minimal" thinking
+      17/18, median 1.8 s, and it opened Chrome for "1, 2, 4". Kept default. Smaller screenshots (800px)
+      were a bit faster but aimed less precisely, so kept 1100px.
 
 ## Next / ideas
 - Rotate the Gemini key (user)
