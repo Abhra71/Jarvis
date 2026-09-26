@@ -35,7 +35,7 @@ Free, **renewing** (not a one-time credit), no card, fast enough for voice, and 
 - **Cerebras:** now a one-time $5 trial (needs a card, 30 days, 5 req/min). Rejected.
 - **GitHub Models:** retired on 30 Jul 2026.
 - **DeepSeek (own API):** one-time 5M tokens, then paid; text only.
-- **Gemini:** limits per model (check the rate-limit page in AI Studio). Gemini 3.8 Flash has a tiny free allowance.
+- **Gemini:** Flash-Lite free tier is about 1,000–1,500 requests/day (the user checked AI Studio). Gemini 3.8 Flash has a tiny free allowance.
 
 ## Conclusions
 1. **Tokens are the bottleneck, not speed.**
@@ -48,3 +48,16 @@ Free, **renewing** (not a one-time credit), no card, fast enough for voice, and 
    - **backups:** the other Groq model, then Gemini 3.1 Flash-Lite, then OpenRouter Nemotron; plus Mistral once enabled.
 3. **Chess must not rely on AI vision.** Flipped boards were missed, and the AI mangled two-click arguments. Squares should be computed in code (the site-skill plan).
 4. `click_pair` should take squares or element names, not six numbers.
+
+## After v3 steps 2–3: smaller requests (26 Sep, evening)
+Each request now carries only the tools and prompt rules its kind of job needs (`jarvis/router.py`); the AI can ask for more with `more_tools`. Same test sets, same fake names.
+
+| Model | Commands | Screen clicks | Typical / slowest | Tokens in per request |
+|---|---|---|---|---|
+| Groq gpt-oss-120b | **16/16** (was 15/16) | can't see | 0.8 s / 1.4 s | **1,070** (was 2,200) |
+| Groq gpt-oss-20b | **16/16** (was 15/16) | can't see | 0.7 s / 1.0 s | **1,070** (was 2,200) |
+| Gemini 3.5 Flash-Lite | 15/16 (was 16/16) | **11/12** (was 10/12) | 0.9 s / 1.3 s (screen 1.6 / 1.8 s) | 1,440 / 3,360 with a screenshot (was 3,300 / 4,400) |
+
+- Gemini's one command "miss" asked for the typing tools on "send hi to mom on whatsapp" instead of opening WhatsApp first: harmless (sending needs a spoken yes anyway).
+- The screen miss is the flipped (Black) board again; chess squares will be computed in code (step 5).
+- About half the tokens per request means about twice as many requests fit in Groq's 8k/min and 200k/day.

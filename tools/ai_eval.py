@@ -31,7 +31,8 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # model replies can 
 import httpx  # noqa: E402
 
 import eval_screens  # noqa: E402
-from jarvis.brain import SYSTEM_PROMPT, load_api_key  # noqa: E402
+from jarvis import router  # noqa: E402
+from jarvis.brain import build_prompt, load_api_key, tool_declarations  # noqa: E402
 from jarvis.skills import Skills  # noqa: E402
 
 PROVIDERS = {  # name: (OpenAI-compatible base URL, key name in .env)
@@ -62,11 +63,17 @@ TEXT_CASES = [
     ("send hi to mom on whatsapp", {TEXT, "open_app", "window"}),
 ]
 
-FAKE_PROMPT = SYSTEM_PROMPT.format(
+FAKE_CONTEXT = dict(
     now="Saturday 26 September 2026, 09:30 PM", sound="",
     front="Google Chrome - New Tab", windows="Google Chrome - New Tab; File Explorer - Downloads",
     profiles="1. Main (nicknames: main, personal) [folder: Default]; 2. Work (nickname: AI) [folder: Profile 2]; "
              "3. Backup [folder: Profile 3]")
+
+
+def request_for(skills, text: str) -> tuple[str, list[dict]]:
+    """The system prompt and tools Jarvis would send for this request (v3: only what its kind needs)."""
+    kind = router.classify(text)
+    return build_prompt(kind, text, **FAKE_CONTEXT), tool_declarations(skills, kind, set(), text)
 
 
 def _schema(s, in_props=False):
@@ -89,8 +96,8 @@ def _schema(s, in_props=False):
 
 
 class Caller:
-    def __init__(self, provider: str, model: str, decls: list[dict], thinking: str | None = None):
-        self.provider, self.model, self.decls, self.thinking = provider, model, decls, thinking
+    def __init__(self, provider: str, model: str, skills, thinking: str | None = None):
+        self.provider, self.model, self.skills, self.thinking = provider, model, skills, thinking
         self.http = httpx.Client(timeout=60)
         self.limits = {}
         if provider == "gemini":
@@ -98,9 +105,6 @@ class Caller:
         else:
             base, env = PROVIDERS[provider]
             self.base, self.key = base, load_api_key(env)
-            # Some providers (Mistral) insist on a parameters object even for tools that take none.
-            self.tools = [{"type": "function", "function": {"parameters": {"type": "object", "properties": {}},
-                                                            **_schema(d)}} for d in decls]
 
     def ask(self, text: str, jpeg: bytes | None = None):
         """-> (status, seconds, calls [(name, args)], said, tokens_in, tokens_out, error text)"""
@@ -113,6 +117,7 @@ class Caller:
             return "bad-reply", time.monotonic() - t0, [], "", 0, 0, f"{type(e).__name__}: {e}"
 
     def _ask(self, text: str, jpeg: bytes | None = None):
+        prompt, decls = request_for(self.skills, text)
         if self.provider == "gemini":
             parts = [{"text": text}]
             if jpeg:
@@ -121,9 +126,9 @@ class Caller:
             gen = {"temperature": 0.4, "maxOutputTokens": 2048}
             if self.thinking:
                 gen["thinkingConfig"] = {"thinkingLevel": self.thinking}
-            body = {"system_instruction": {"parts": [{"text": FAKE_PROMPT}]},
+            body = {"system_instruction": {"parts": [{"text": prompt}]},
                     "contents": [{"role": "user", "parts": parts}],
-                    "tools": [{"functionDeclarations": self.decls}], "generationConfig": gen}
+                    "tools": [{"functionDeclarations": decls}], "generationConfig": gen}
             t0 = time.monotonic()
             r = self.http.post(f"{GEMINI_API}/models/{self.model}:generateContent",
                                headers={"x-goog-api-key": self.key}, json=body)
@@ -143,9 +148,12 @@ class Caller:
             content = [{"type": "text", "text": text + "\n(The current screen is attached; positions are x,y from 0 to 1000.)"},
                        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()}}]
         # A small answer budget: Groq counts max_tokens against its 8,000 tokens/minute limit up front.
-        body = {"model": self.model, "temperature": 0.4, "max_tokens": 400, "tools": self.tools,
+        # Some providers (Mistral) insist on a parameters object even for tools that take none.
+        tools = [{"type": "function", "function": {"parameters": {"type": "object", "properties": {}}, **_schema(d)}}
+                 for d in decls]
+        body = {"model": self.model, "temperature": 0.4, "max_tokens": 400, "tools": tools,
                 "tool_choice": "auto",
-                "messages": [{"role": "system", "content": FAKE_PROMPT}, {"role": "user", "content": content}]}
+                "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": content}]}
         t0 = time.monotonic()
         r = self.http.post(f"{self.base}/chat/completions", headers={"Authorization": f"Bearer {self.key}"}, json=body)
         dt = time.monotonic() - t0
@@ -187,9 +195,9 @@ def score_screen(calls, targets, truth) -> tuple[float, str]:
         return 0.0, f"bad args {a} ({e})"
 
 
-def run_model(spec: str, suites: list[str], gap: float, screens, decls, thinking=None) -> dict:
+def run_model(spec: str, suites: list[str], gap: float, screens, skills, thinking=None) -> dict:
     provider, model = spec.split(":", 1)
-    c = Caller(provider, model, decls, thinking)
+    c = Caller(provider, model, skills, thinking)
     res = {"model": spec, "thinking": thinking, "when": datetime.now().isoformat(timespec="seconds")}
     jobs = []
     if "text" in suites:
@@ -246,12 +254,12 @@ def main():
     a = ap.parse_args()
 
     cfg = tomllib.load(open(ROOT / "config.toml", "rb"))
-    decls = Skills(cfg, print).declarations()
+    skills = Skills(cfg, print)
     suites = ["text", "screen"] if a.suite == "both" else [a.suite]
     screens = eval_screens.build_screens() if "screen" in suites else {}
     out = ROOT / "logs" / "ai_eval.jsonl"
     for spec in a.models:
-        res = run_model(spec, suites, a.gap, screens, decls, a.thinking)
+        res = run_model(spec, suites, a.gap, screens, skills, a.thinking)
         with open(out, "a", encoding="utf-8") as f:
             f.write(json.dumps(res) + "\n")
         summary = {s: res.get(s) for s in suites}

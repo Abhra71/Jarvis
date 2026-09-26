@@ -17,17 +17,17 @@ vad_aggressiveness = 2       # 0-3, higher = more strict about what counts as sp
 followup_seconds = 5         # after answering, keep listening this long without "Hey Jarvis" (0 = off)
 
 [ai]
-# Google's always-current models. Lite answered in ~1.5s vs 4-20s for full Flash (which "thinks" first)
-# and has a bigger free allowance; full Flash is the backup when Lite is busy or rate-limited.
-# 26 Sep accuracy test (16 typical requests): 3.1 Flash Lite 16/16 and never hung; flash-lite-latest 15/16
-# (hung on ~half of requests under load); Groq gpt-oss-120b 14/16 (asked instead of acting); Groq qwen
-# rate-limited on 7/16.
-model = "gemini-3.1-flash-lite"
-fallback_models = ["gemini-flash-lite-latest", "gemini-flash-latest"]
-# Backup when Gemini is busy/out of quota (needs GROQ_API_KEY in .env). Groq's free limit is per model
-# (~3-4 Jarvis requests/minute each), so it moves down this list when one is rate-limited.
-groq_models = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]
-groq_vision_model = "qwen/qwen3.8-27b"   # the one that can read screenshots
+# v3 (26 Sep): Groq + Gemini only. See docs/ai-provider-report.md.
+# Gemini Flash-Lite: anything that needs the screen, questions about live facts, and the fallback.
+# 3.5 Flash-Lite: 16/16 commands, 10/12 screen clicks; 3.1 Flash-Lite: never hung in tests.
+model = "gemini-3.5-flash-lite"
+fallback_models = ["gemini-3.1-flash-lite"]
+# Groq (~1 s): commands and questions. Its free limit is per model (8k tokens/min, 200k/day), so it
+# moves down this list when one is rate-limited. Its models can't see: screen steps go to Gemini.
+groq_models = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+# Which AI goes first for each kind of request (router.py decides the kind). Defaults:
+# screen/live -> Gemini first; chat/action/files -> Groq first. To change, add a section at the end of
+# this file, e.g.  [ai.routing]  then  action = ["gemini", "groq"]
 max_steps = 14               # max AI round-trips per request (look -> click -> look ... needs several)
 history_minutes = 5          # forget the conversation after this much silence
 history_turns = 10
@@ -38,7 +38,7 @@ slow_backoff_seconds = 180   # after Gemini stalls, ask Groq first for this long
 # 26 Sep session: at 2.5 s a backup copy went out on 18 of 29 requests but won only once (normal answers
 # with a screenshot take 3-5 s), wasting free quota. 5 s still catches real hangs.
 hedge_after_seconds = 5
-hedge_model = "gemini-flash-lite-latest"
+hedge_model = "gemini-3.1-flash-lite"
 
 [stt]
 model = "base.en"            # tiny.en (fastest) / base.en / small.en (most accurate, slower)

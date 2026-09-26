@@ -83,8 +83,19 @@ Gemini Lite models hang on ~half of requests.
       y2…" so the AI fixes them in the same round, instead of crashing
 - [x] Leaked "…thought" labels ("atthought") stripped from replies
 - [x] "chess dot com" / "chess.com" / "wikipedia dot org" / "physics wallah" open the site offline
-- [ ] Step 2: smaller requests (tool subset per request type, shorter prompt)
-- [ ] Step 3: routing (Groq first for text, Gemini for screen + fallback)
+
+### Steps 2–3. Smaller requests + routing (26 Sep)
+- [x] `jarvis/router.py` sorts each request: chat / live / action / screen / files
+- [x] Only that kind's tools are sent (chat: 1 tool, commands: ~10 instead of 30), plus `more_tools` so the
+      AI can ask for a missing group; the prompt is built from sections (profiles/windows only when relevant)
+- [x] Past turns are remembered as plain words, not tool calls and screenshots
+- [x] Groq (gpt-oss-120b → 20b) goes first for commands and questions; Gemini (3.5 → 3.1 Flash-Lite) first for
+      the screen and live facts, and the fallback. When Groq needs to see, the request is handed to Gemini
+      with the steps already done and the screenshot, so nothing is repeated
+- [x] Measured: Groq 16/16 at ~1,070 tokens (was 15/16 at 2,200); Gemini 11/12 screen clicks at 3,360 (was
+      10/12 at 4,400). See docs/ai-provider-report.md
+
+### Still to do
 - [ ] Step 4: click by element name (UI Automation)
 - [ ] Step 5: site packs (chess → YouTube → PW)
 - [ ] Step 6: Whisper on the GPU

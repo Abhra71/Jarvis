@@ -302,8 +302,11 @@ class Skills:
         self.screen_fresh = True
         return jpeg
 
-    def declarations(self) -> list[dict]:
-        return [t.declaration() for t in self.tools.values()]
+    def declarations(self, names: list[str] | None = None) -> list[dict]:
+        """All tools, or only the named ones (each request sends just what its kind of job needs)."""
+        if names is None:
+            return [t.declaration() for t in self.tools.values()]
+        return [self.tools[n].declaration() for n in names if n in self.tools]
 
     def call(self, name: str, args: dict) -> str | dict:
         tool = self.tools.get(name)

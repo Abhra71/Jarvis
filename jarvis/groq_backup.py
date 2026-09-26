@@ -1,11 +1,12 @@
-"""Groq as a backup brain, used when Gemini is busy or out of free quota.
+"""Groq: the fast brain (~1 s) for commands and questions.
 
 Groq speaks the OpenAI chat format, so this converts Jarvis's Gemini-style tool
 declarations and conversation into that format and runs the same tool loop.
 
-Groq's free tier limits tokens per minute *per model*, and each Jarvis request is
-~2k tokens, so we move down a list of models when one is rate-limited. Only some
-models can see images, so screenshots switch the turn to the vision model.
+Groq's free tier limits tokens per minute *per model*, so we move down a list of
+models when one is rate-limited. Its models can't see: when a request needs the
+screen, it raises NeedsVision and brain.py hands the request to Gemini, along
+with the steps already done (unless a Groq vision model is configured).
 """
 
 import base64
@@ -21,8 +22,17 @@ log = logging.getLogger(__name__)
 
 API = "https://api.groq.com/openai/v1"
 
-DEFAULT_MODELS = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]
-DEFAULT_VISION_MODEL = "qwen/qwen3.8-27b"
+DEFAULT_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+
+
+class NeedsVision(Exception):
+    """The AI wanted to see the screen but Groq can't. `done` lists the steps already carried out, so the
+    next AI continues instead of repeating them; `image` is the screenshot that was taken."""
+
+    def __init__(self, done: list[str], image: bytes):
+        super().__init__("needs vision")
+        self.done = done
+        self.image = image
 
 
 def _schema(s, _in_properties=False):
@@ -56,7 +66,7 @@ class GroqBackup:
     def __init__(self, key: str, cfg: dict, http: httpx.Client):
         self.key = key
         self.models = cfg.get("groq_models", DEFAULT_MODELS)
-        self.vision_model = cfg.get("groq_vision_model", DEFAULT_VISION_MODEL)
+        self.vision_model = cfg.get("groq_vision_model") or None
         self.http = http
 
     def _complete(self, models: list[str], body: dict) -> dict:
@@ -92,24 +102,30 @@ class GroqBackup:
                 break
         raise RuntimeError(f"Groq failed ({last})")
 
-    def ask(self, system: str, history: list[dict], text: str, declarations: list[dict],
+    def ask(self, system: str, history: list[dict], text: str, declarations,
             call_tool, max_steps: int = 6, finish=None) -> tuple[str, list[dict]]:
-        """finish(tool_names, results, said) -> reply to speak now, or None to ask the AI again."""
-        """Returns (reply, what to add to the shared history in Gemini format)."""
+        """Returns (reply, what to add to the shared history in Gemini format).
+
+        declarations: a list, or a function returning the current list (the tools can grow mid-request).
+        finish(tool_names, results, said) -> reply to speak now, or None to ask the AI again.
+        """
         messages = [{"role": "system", "content": system}]
         for c in history:  # earlier turns as plain text; tool details aren't needed
             t = _text(c)
             if t:
                 messages.append({"role": "assistant" if c["role"] == "model" else "user", "content": t})
         messages.append({"role": "user", "content": text})
-        tools = [{"type": "function", "function": {
-            "name": d["name"], "description": d["description"],
-            "parameters": _schema(d.get("parameters", {"type": "OBJECT", "properties": {}}))}} for d in declarations]
+        def tools():
+            decls = declarations() if callable(declarations) else declarations
+            return [{"type": "function", "function": {
+                "name": d["name"], "description": d["description"],
+                "parameters": _schema(d.get("parameters", {"type": "OBJECT", "properties": {}}))}} for d in decls]
 
         models = self.models
+        done: list[str] = []  # steps carried out, for a hand-over to an AI that can see
         t0 = time.monotonic()
         for _ in range(max_steps):
-            msg = self._complete(models, {"messages": messages, "tools": tools, "temperature": 0.4, "max_tokens": 1024})
+            msg = self._complete(models, {"messages": messages, "tools": tools(), "temperature": 0.4, "max_tokens": 1024})
             calls = msg.get("tool_calls") or []
             messages.append({k: v for k, v in msg.items() if k in ("role", "content", "tool_calls") and v is not None})
             if not calls:
@@ -128,6 +144,8 @@ class GroqBackup:
                 if isinstance(result, dict):  # a screenshot
                     images.append(result["image_jpeg"])
                     result = result["text"]
+                elif call["function"]["name"] not in ("more_tools", "look_at_screen"):
+                    done.append(f"{call['function']['name']}: {result}")
                 results.append(result)
                 messages.append({"role": "tool", "tool_call_id": call["id"], "content": str(result)})
             quick = None if images or not finish else finish(
@@ -135,6 +153,8 @@ class GroqBackup:
             if quick:
                 log.info("Groq answered in %.1fs (fast finish)", time.monotonic() - t0)
                 return quick, [{"role": "user", "parts": [{"text": text}]}, {"role": "model", "parts": [{"text": quick}]}]
+            if images and not self.vision_model:
+                raise NeedsVision(done, images[-1])
             if images:
                 # Tool messages can't carry images in this format, so show it as a user message,
                 # and finish the turn on the model that can actually see.

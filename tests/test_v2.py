@@ -11,6 +11,16 @@ from jarvis.skills.browser import Profile, find_profile, load_profiles
 def setUpModule():
     # Tests get a throwaway, never-saved copy of the usage stats instead of your real ones.
     jarvis.usage.usage.persist = False
+    # …and never find the real keys in .env (the brain re-reads it for keys added while running).
+    # Tests that want a key patch load_api_key themselves.
+    from jarvis import brain as brain_mod
+    global _no_keys
+    _no_keys = mock.patch.object(brain_mod, "load_api_key", return_value=None)
+    _no_keys.start()
+
+
+def tearDownModule():
+    _no_keys.stop()
 
 
 def _fresh_usage():
@@ -110,8 +120,10 @@ class BrainTest(unittest.TestCase):
         roles = [c["role"] for c in second_body["contents"]]
         self.assertEqual(roles, ["user", "model", "user"])
         self.assertIn("functionResponse", second_body["contents"][2]["parts"][0])
-        # History remembers the whole exchange for follow-ups like "close it".
-        self.assertEqual(len(b.history), 4)
+        # History remembers the exchange for follow-ups like "close it", as plain words (fewer tokens).
+        self.assertEqual([c["parts"][0]["text"] for c in b.history],
+                         ["open youtube in my work profile and tell me when it's ready",
+                          "Done, YouTube is open in your Work profile."])
 
     def test_quota_raises_unavailable(self):
         b = self.brain_mod.Brain({"model": "gemini-test"}, _fake_skills())

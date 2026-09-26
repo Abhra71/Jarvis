@@ -14,8 +14,9 @@ from datetime import datetime
 
 import httpx
 
+from . import router
 from .config import ROOT
-from .groq_backup import GroqBackup
+from .groq_backup import GroqBackup, NeedsVision
 from .skills import Skills, action_budget, desktop, mouse
 from .skills import volume
 from .usage import usage
@@ -24,47 +25,70 @@ log = logging.getLogger(__name__)
 
 API = "https://generativelanguage.googleapis.com/v1beta"
 
-# Kept compact: it's sent with every request, and the free tiers count tokens.
-SYSTEM_PROMPT = """You are Jarvis, a voice assistant on the user's Windows PC. Replies are read aloud: one or two \
-short spoken sentences, no markdown/lists/URLs. The user's words come from speech recognition; assume the most \
-sensible meaning. Answer general-knowledge questions directly from what you know, without tools or searching.
-Only search when they ask you to, or when it needs live data (today's news, weather, scores, prices).
+# The system prompt is built from sections: each request carries only the rules its kind of job needs
+# (router.py decides the kind). Every word is paid for in tokens on every request, so keep them short.
+_CORE = """You are Jarvis, a voice assistant on the user's Windows PC. Replies are read aloud: one or two \
+short spoken sentences, no markdown/lists/URLs. The words come from speech recognition; assume the most sensible \
+meaning. If a request doesn't make sense (just numbers, a garbled phrase), ask what they meant; don't act.
+Answer general knowledge from what you know. Recent or changing facts (news, scores, prices, "latest", "this \
+year"): web_search, then read the answer on screen; never from memory.
+Do only what was asked, nothing extra, then say briefly what happened ("Opened YouTube"). Never claim success \
+you haven't seen. Don't read out page titles unless asked.
+Ask one short yes/no question first before anything that sends, posts, buys, pays, subscribes, signs in, submits \
+a form, deletes or changes account settings. Never type passwords or card numbers. Never read out codes, \
+passwords, card or account numbers seen on screen; say one is shown, without the digits.
+If your tool calls finish the request, put your short reply in the same response. If a tool you need is \
+missing, call more_tools."""
 
-You act only through the tools, like a person at the keyboard and mouse; the user watches the screen.
-- Do only what was asked, nothing extra. Afterwards say briefly what happened ("Opened YouTube", "Moved
-  the pawn to f4"). Don't read out page or tab titles unless asked.
-- "Open YouTube" = the website (open_website, full URL) unless they say "app". "Search X on YouTube" =
-  web_search with that site; if that site is already in front, site_search. "Here", "this tab", "address
-  bar" = act on the current tab (address_bar / browser / site_search), not a new window.
-- "Third profile" = number 3 in the profile list below. Nicknames (main, AI, backup…) are listed there.
-  If a profile request fits none or several, ask which one.
-- Recent or changing facts (latest film, current score, news, prices, "this year"): web_search, then read the
-  answer from the results on screen. Never answer those from memory; your knowledge may be out of date.
-- If a click didn't do what you wanted, don't click the same spot again: look again and aim somewhere else,
-  or use the keyboard (Tab to move between fields), or ask the user.
-- "Close this" right after you opened a window = close that window. Close a tab only if they say tab.
-  "Close the chess/YouTube tab" = close_tab_named; "close this tab" = browser close_tab.
-  "Close both/all of them" = window with action close_all.
-- To click: look_at_screen (a screenshot may already be attached), then click the centre of the item (x,y 0-1000).
-  Two clicks from one look (chess: piece then square; drag and drop) = one click_pair call.
-  Skip the browser's tab/toolbar strip (top ~10%) unless asked. For "the second video": count page results top to bottom, skipping ads/Shorts.
-- Look again after a click only if the next step needs the new screen, or to confirm you opened the right
-  thing before saying so. Never claim success you haven't seen.
-- To find text on a long page use find_on_page, not repeated scroll-and-look.
-- Files: find_files, then open_path / show_in_explorer. Deleting is turned off: never try.
-- Ask first (one short question, act only after a clear yes) before anything that sends, posts, buys, pays,
-  subscribes, signs in, submits a form, deletes, or changes account settings. Opening, closing or switching
-  apps, windows and tabs needs no confirmation. Never type passwords or card numbers.
-- If the tool calls you're making finish the request, include your short reply text in the same response.
-- "It", "that tab" = what you did last or the front window. If unclear, ask briefly.
-- If the request doesn't make sense (e.g. just numbers, a garbled phrase), ask what they meant. Don't act.
-- Never read out verification codes, one-time passwords, passwords, card or account numbers you see on
-  screen; say that one is shown, without the digits.
+_APPS = """- "Open YouTube" = the website (open_website, full URL) unless they say "app". "Search X on YouTube" = \
+web_search with that site; if that site is in front, site_search. "Here", "this tab", "address bar" = the current \
+tab (address_bar / browser / site_search), not a new window.
+- "Close this" right after you opened a window = that window. Close a tab only if they say tab: "close the chess \
+tab" = close_tab_named; "close this tab" = browser close_tab. "Close all of them" = window close_all.
+- "It", "that" = what you did last or the front window; if unclear, ask. Searching, and opening, closing or \
+switching apps, windows and tabs, need no confirmation: just do them."""
 
-Time: {now}{sound}
-Front window: {front}
-Open windows: {windows}
+_SCREEN = """- To click: use the screenshot (one may be attached, else look_at_screen); click the centre of the \
+item, x,y 0-1000. Two clicks from one look (chess: piece then square; drag) = one click_pair. Skip the browser's \
+tab/toolbar strip (top ~10%) unless asked. "The second video" = count results top to bottom, skipping ads/Shorts.
+- If a click didn't work, don't click the same spot again: aim elsewhere, use the keyboard, or ask.
+- Look again only if the next step needs the new screen, or to confirm before reporting. To find text on a long \
+page use find_on_page."""
+
+_FILES = """- Files: paths like 'Desktop/Trips' or 'Downloads/cv.pdf' work directly; use find_files only to locate \
+something by name, then open_path / show_in_explorer. Deleting is turned off: never try."""
+
+_PROFILES = """- "Third profile" = number 3 in the profile list. If a profile request fits none or several, ask.
 Chrome profiles (pass the folder as `profile`): {profiles}"""
+
+
+_GROUP_HINTS = {
+    "apps": "open apps/sites, windows, tabs, web search, volume, media keys, timers",
+    "system": "volume, media keys (play/pause/next), timers",
+    "keys": "type text, press keys and shortcuts",
+    "screen": "look at the screen, click, drag, scroll",
+    "files": "find, open, copy, move, rename, read or write files and folders",
+}
+
+
+def build_prompt(kind: str, request: str, now: str, sound: str = "", front: str = "", windows: str = "",
+                 profiles: str = "") -> str:
+    """The system prompt for one request: core rules plus only the sections its kind needs."""
+    parts = [_CORE]
+    if kind in ("action", "screen", "files"):
+        parts.append(_APPS)
+    if kind in ("screen", "live"):
+        parts.append(_SCREEN)
+    if kind == "files":
+        parts.append(_FILES)
+    if kind in ("action", "screen") and router.wants_profiles(request):
+        parts.append(_PROFILES.format(profiles=profiles or "none"))
+    parts.append(f"Time: {now}{sound}")
+    if kind != "chat":
+        parts.append(f"Front window: {front}")
+    if kind in ("action", "screen"):
+        parts.append(f"Open windows: {windows}")
+    return "\n".join(parts)
 
 
 def load_api_key(name: str = "GEMINI_API_KEY") -> str | None:
@@ -106,10 +130,6 @@ _FINISHING_TOOLS = {
 }
 _MULTI_STEP = re.compile(r"\b(and|then|after that|also|once)\b|,")
 _LAUNCHING_TOOLS = {"open_app", "open_website", "open_chrome", "open_path", "web_search", "show_in_explorer"}
-# Requests that are about what's on screen: a screenshot goes with the first request, saving a round trip.
-_SCREEN_REQUEST = re.compile(
-    r"\b(click|tap|select|choose|press the|drag|move|pawn|knight|bishop|rook|queen|king|castle|chess|video|"
-    r"button|link|on (the |my )?screen|this page|what do you see|what's on|read (this|the screen|it))\b", re.I)
 _PLAY = re.compile(r"\b(play|listen to|put on|watch)\b", re.I)
 _CLICKS = {"click", "click_pair", "type_text", "press_key"}
 _QUESTION = re.compile(r"\?\s*$|^\s*(what|who|when|where|which|why|how|is|are|was|were|did|does|do|can|tell me)\b",
@@ -183,6 +203,19 @@ def _limit_seconds(r: httpx.Response) -> int:
     return 60
 
 
+def tool_declarations(skills, kind: str, extra_groups: set[str], request: str) -> list[dict]:
+    """Only the tools this kind of request needs, plus more_tools to ask for the rest."""
+    decls = list(skills.declarations(router.tool_names(kind, extra_groups, request)))
+    missing = router.missing_groups(kind, extra_groups, request)
+    if missing:
+        decls.append({"name": "more_tools",
+                      "description": "Get tools this request needs but you don't have: "
+                                     + "; ".join(f"{g} = {_GROUP_HINTS[g]}" for g in missing) + ".",
+                      "parameters": {"type": "OBJECT", "required": ["group"],
+                                     "properties": {"group": {"type": "STRING", "enum": missing}}}})
+    return decls
+
+
 class BrainUnavailable(Exception):
     """No key, no internet, busy, or quota used up: the caller falls back to offline rules."""
 
@@ -199,6 +232,9 @@ class Brain:
         self.groq = None
         self.answered_by = None  # "gemini" or "groq", for the usage stats
         self.gemini_slow_until = 0.0  # while in the future, Groq is asked first
+        self.kind = "action"          # router.classify() of the current request
+        self.request = ""             # the current request's words
+        self.extra_groups: set[str] = set()  # tool groups the AI asked for with more_tools
         if not self.available:
             log.warning("No GEMINI_API_KEY or GROQ_API_KEY in .env: AI features are off, offline commands still work")
 
@@ -237,16 +273,36 @@ class Brain:
                          {"role": "model", "parts": [{"text": reply}]}]
         self.last_turn = time.monotonic()
 
-    def _system_prompt(self) -> str:
-        try:
-            front, windows = desktop.front_window(), desktop.list_open_windows()
-        except Exception:
-            front = windows = "unknown"
-        return SYSTEM_PROMPT.format(
-            now=datetime.now().strftime("%A %d %B %Y, %I:%M %p"),
-            sound="\nSound: other apps are MUTED (volume unmute to hear them)" if volume.others_muted() else "",
+    def _system_prompt(self, text: str = "") -> str:
+        front = windows = ""
+        if self.kind != "chat":
+            try:
+                front = desktop.front_window()
+                windows = desktop.list_open_windows() if self.kind in ("action", "screen") else ""
+            except Exception:
+                front = windows = "unknown"
+        wants_profiles = self.kind in ("action", "screen") and router.wants_profiles(text)
+        muted = self.kind in ("action", "screen") and volume.others_muted()
+        return build_prompt(
+            self.kind, text, now=datetime.now().strftime("%A %d %B %Y, %I:%M %p"),
+            sound="\nSound: other apps are MUTED (volume unmute to hear them)" if muted else "",
             front=front, windows=windows,
-            profiles=self.skills.browser.profile_summary() or "none")
+            profiles=(self.skills.browser.profile_summary() or "none") if wants_profiles else "")
+
+    # ---- tools for this request --------------------------------------------------
+
+    def _declarations(self) -> list[dict]:
+        return tool_declarations(self.skills, self.kind, self.extra_groups, self.request)
+
+    def _call(self, name: str, args: dict):
+        if name == "more_tools":
+            group = str((args or {}).get("group", ""))
+            if group not in router.GROUPS:
+                return f"Unknown group. Choose one of: {', '.join(router.GROUPS)}."
+            self.extra_groups.add(group)
+            log.info("AI asked for the %s tools", group)
+            return f"Added the {group} tools. Use them now."
+        return self.skills.call(name, args)
 
     def _post(self, model: str, body: dict) -> tuple[httpx.Response, str]:
         """POST with a "hedge". The newest Gemini models often hang on requests that normally take ~2s
@@ -285,9 +341,9 @@ class Brain:
 
     def _generate(self, contents: list[dict]) -> dict:
         body = {
-            "system_instruction": {"parts": [{"text": self._system_prompt()}]},
+            "system_instruction": {"parts": [{"text": self._system_prompt(self.request)}]},
             "contents": contents,
-            "tools": [{"functionDeclarations": self.skills.declarations()}],
+            "tools": [{"functionDeclarations": self._declarations()}],
             "generationConfig": {"temperature": 0.4, "maxOutputTokens": self.cfg.get("max_output_tokens", 2048)},
         }
         last = None
@@ -338,6 +394,8 @@ class Brain:
             volume.mute(False)
         # Hands-on actions (clicks, typing…) are capped at what was asked; enforced in Skills.call.
         self.skills.budget = action_budget(text, self.cfg.get("open_ended_actions", 3))
+        self.kind, self.request, self.extra_groups = router.classify(text), text, set()
+        log.info("Request kind: %s", self.kind)
         if unsure:
             text += "\n(Speech recognition was unsure of these words. If they don't clearly make sense, ask.)"
         self._trim_history()
@@ -367,31 +425,45 @@ class Brain:
                     return t.endswith("?")
         return False
 
+    def _chain(self) -> list[str]:
+        """Which AI to ask, in order. Groq (~1 s) for commands and questions; Gemini (can see) first for
+        anything about the screen or needing live facts read off a results page, and as the fallback."""
+        default = ["gemini", "groq"] if self.kind in ("screen", "live") else ["groq", "gemini"]
+        order = list(self.cfg.get("routing", {}).get(self.kind, default))
+        if "groq" in order and time.monotonic() < self.gemini_slow_until:
+            order.remove("groq")
+            order.insert(0, "groq")  # Gemini is stalling: don't wait on it every time
+        return [p for p in order if (p == "gemini" and self.key) or (p == "groq" and self.groq)]
+
     def _ask_any(self, text: str) -> str:
-        # While Gemini is stalling, go to Groq first (~0.7s) instead of waiting on Gemini every time.
-        if self.groq and self.key and time.monotonic() < self.gemini_slow_until:
-            log.info("Gemini was stalling recently; asking Groq first")
+        chain = self._chain()
+        if not chain:
+            raise BrainUnavailable("no API key")
+        handoff, last = None, None
+        for i, provider in enumerate(chain):
             try:
-                reply = self._ask_groq(text)
-                self.answered_by = "groq"
+                if provider == "groq":
+                    reply = self._ask_groq(text)
+                else:
+                    reply = self._ask_gemini(text, handoff)
+                self.answered_by = provider
                 return reply
+            except NeedsVision as e:
+                # Groq can't see. Hand the request, and what it already did, to Gemini.
+                if "gemini" not in chain[i + 1:]:
+                    log.warning("Groq needs to see the screen and Gemini isn't available")
+                    self.answered_by = "groq"
+                    return "I'd need to see the screen for that, and the AI that can see isn't available right now."
+                log.info("Groq needs to see the screen; handing over to Gemini (done so far: %s)", e.done)
+                handoff = e
             except BrainUnavailable as e:
-                log.warning("Groq unavailable (%s), trying Gemini", e)
-        if self.key:
-            try:
-                reply = self._ask_gemini(text)
-                self.answered_by = "gemini"
-                return reply
-            except BrainUnavailable as e:
-                if not self.groq:
-                    raise
-                if "busy" in str(e):
+                last = e
+                if provider == "gemini" and "busy" in str(e) and self.groq:
                     self.gemini_slow_until = time.monotonic() + self.cfg.get("slow_backoff_seconds", 180)
                     usage.set_activity("Gemini is stalling; using Groq first for a few minutes")
-                log.warning("Gemini unavailable (%s), asking Groq", e)
-        reply = self._ask_groq(text)
-        self.answered_by = "groq"
-        return reply
+                if i + 1 < len(chain):
+                    log.warning("%s unavailable (%s), asking %s", provider, e, chain[i + 1])
+        raise last or BrainUnavailable("no AI available")
 
     def model_order(self) -> list[str]:
         """Every model Jarvis may use, in the order it tries them (for the status page / voice summary)."""
@@ -403,8 +475,8 @@ class Brain:
     def _ask_groq(self, text: str) -> str:
         self.skills.screen_fresh = False  # a screenshot attached for Gemini wasn't seen by Groq
         try:
-            reply, turn = self.groq.ask(self._system_prompt(), self.history, text, self.skills.declarations(),
-                                        self.skills.call, self.cfg.get("max_steps", 6),
+            reply, turn = self.groq.ask(self._system_prompt(text), self.history, text, self._declarations,
+                                        self._call, self.cfg.get("max_steps", 6),
                                         finish=lambda names, results, said: fast_reply(text, names, results, said))
         except (httpx.HTTPError, RuntimeError, KeyError) as e:
             log.warning("Groq failed: %s", e)
@@ -413,10 +485,17 @@ class Brain:
         self.last_turn = time.monotonic()
         return reply
 
-    def _ask_gemini(self, text: str) -> str:
+    def _ask_gemini(self, text: str, handoff: "NeedsVision | None" = None) -> str:
         turn = [{"role": "user", "parts": [{"text": text}]}]
         t0 = time.monotonic()
-        if _SCREEN_REQUEST.search(text):
+        if handoff:
+            # Carrying on from Groq, which did some steps and then needed to see the screen.
+            done = "; ".join(handoff.done) or "nothing yet"
+            turn[0]["parts"] += [{"text": f"(Already done for this request: {done}. The screen now is attached; "
+                                          "positions are x,y from 0 to 1000. Don't repeat those steps.)"},
+                                 {"inlineData": {"mimeType": "image/jpeg",
+                                                 "data": base64.b64encode(handoff.image).decode()}}]
+        elif self.kind == "screen":
             # Chess on 26 Sep: every move was look, think, click, look, think, click (13-32 s). Sending the
             # screen up front lets the AI act in its first answer.
             turn[0]["parts"] += [{"text": "(The current screen is attached; positions are x,y from 0 to 1000.)"},
@@ -454,7 +533,7 @@ class Brain:
                         log.info("Checking the screen before Jarvis reports a click result")
                         if launched:
                             time.sleep(1.5)  # an app/window just opened; let it appear before judging
-                        shot = self.skills.call("look_at_screen", {})
+                        shot = self._call("look_at_screen", {})
                         turn.append({"role": "user", "parts": [
                             {"text": "This is the screen now. Did it work? Report the result. Do nothing that "
                                      "wasn't asked. Tell the user the outcome in one short sentence, e.g. 'Done, the "
@@ -487,7 +566,7 @@ class Brain:
 
                 parts, images, results = [], [], []
                 for call in calls:
-                    result = self.skills.call(call["name"], call.get("args", {}))
+                    result = self._call(call["name"], call.get("args", {}))
                     if isinstance(result, dict):  # tool returned a screenshot
                         images.append(result["image_jpeg"])
                         result = result["text"]
@@ -510,7 +589,10 @@ class Brain:
             raise BrainUnavailable(str(e)) from e
         finally:
             if len(turn) > 1:
-                if turn[-1]["role"] == "user":  # cut off mid tool-loop; close the turn so history stays valid
-                    turn.append({"role": "model", "parts": [{"text": "(stopped)"}]})
-                self.history += turn
+                # Remember the turn as plain words: what was asked and what Jarvis said. The tool calls,
+                # results and screenshots were resent with every later request (tokens) and aren't needed.
+                said = "" if turn[-1]["role"] == "user" else _clean(
+                    " ".join(p.get("text", "") for p in turn[-1]["parts"] if not p.get("thought")))
+                self.history += [{"role": "user", "parts": [{"text": text}]},
+                                 {"role": "model", "parts": [{"text": said or "(stopped)"}]}]
                 self.last_turn = time.monotonic()
