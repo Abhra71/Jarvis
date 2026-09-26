@@ -30,7 +30,8 @@ sensible meaning. Answer general-knowledge questions directly from what you know
 Only search when they ask you to, or when it needs live data (today's news, weather, scores, prices).
 
 You act only through the tools, like a person at the keyboard and mouse; the user watches the screen.
-- Do only what was asked, nothing extra. Afterwards say exactly what you did or opened, by its real name.
+- Do only what was asked, nothing extra. Afterwards say briefly what happened ("Opened YouTube", "Moved
+  the pawn to f4"). Don't read out page or tab titles unless asked.
 - "Open YouTube" = the website (open_website, full URL) unless they say "app". "Search X on YouTube" =
   web_search with that site; if that site is already in front, site_search. "Here", "this tab", "address
   bar" = act on the current tab (address_bar / browser / site_search), not a new window.
@@ -42,8 +43,9 @@ You act only through the tools, like a person at the keyboard and mouse; the use
   or use the keyboard (Tab to move between fields), or ask the user.
 - "Close this" right after you opened a window = close that window. Close a tab only if they say tab.
   "Close both/all of them" = window with action close_all.
-- To click: look_at_screen, then click the centre of the item (x,y 0-1000). Skip the browser's tab/toolbar
-  strip (top ~10%) unless asked. For "the second video": count page results top to bottom, skipping ads/Shorts.
+- To click: look_at_screen (a screenshot may already be attached), then click the centre of the item (x,y 0-1000).
+  Two clicks from one look (chess: piece then square; drag and drop) = one click_pair call.
+  Skip the browser's tab/toolbar strip (top ~10%) unless asked. For "the second video": count page results top to bottom, skipping ads/Shorts.
 - Look again after a click only if the next step needs the new screen, or to confirm you opened the right
   thing before saying so. Never claim success you haven't seen.
 - To find text on a long page use find_on_page, not repeated scroll-and-look.
@@ -101,6 +103,11 @@ _FINISHING_TOOLS = {
 }
 _MULTI_STEP = re.compile(r"\b(and|then|after that|also|once)\b|,")
 _LAUNCHING_TOOLS = {"open_app", "open_website", "open_chrome", "open_path", "web_search", "show_in_explorer"}
+# Requests that are about what's on screen: a screenshot goes with the first request, saving a round trip.
+_SCREEN_REQUEST = re.compile(
+    r"\b(click|tap|select|choose|press the|drag|move|pawn|knight|bishop|rook|queen|king|castle|chess|video|"
+    r"button|link|on (the |my )?screen|this page|what do you see|what's on|read (this|the screen|it))\b", re.I)
+_CLICKS = {"click", "click_pair", "type_text", "press_key"}
 _QUESTION = re.compile(r"\?\s*$|^\s*(what|who|when|where|which|why|how|is|are|was|were|did|does|do|can|tell me)\b",
                        re.I)
 
@@ -376,6 +383,7 @@ class Brain:
         return order
 
     def _ask_groq(self, text: str) -> str:
+        self.skills.screen_fresh = False  # a screenshot attached for Gemini wasn't seen by Groq
         try:
             reply, turn = self.groq.ask(self._system_prompt(), self.history, text, self.skills.declarations(),
                                         self.skills.call, self.cfg.get("max_steps", 6),
@@ -390,8 +398,14 @@ class Brain:
     def _ask_gemini(self, text: str) -> str:
         turn = [{"role": "user", "parts": [{"text": text}]}]
         t0 = time.monotonic()
+        if _SCREEN_REQUEST.search(text):
+            # Chess on 26 Sep: every move was look, think, click, look, think, click (13-32 s). Sending the
+            # screen up front lets the AI act in its first answer.
+            turn[0]["parts"] += [{"text": "(The current screen is attached; positions are x,y from 0 to 1000.)"},
+                                 {"inlineData": {"mimeType": "image/jpeg",
+                                                 "data": base64.b64encode(self.skills.snapshot()).decode()}}]
         unchecked_click = False  # clicked since the last look at the screen
-        verified = False         # the "look before you claim" check runs at most once per request
+        checks = 0               # "look before you claim" checks so far (capped, each costs a round trip)
         asked_again = False      # a garbled final answer gets one retry
         launched = False         # an app or window was opened this request
 
@@ -413,17 +427,20 @@ class Brain:
                 calls = [p["functionCall"] for p in content["parts"] if "functionCall" in p]
                 said = _clean(" ".join(p.get("text", "") for p in content["parts"] if not p.get("thought")))
                 if not calls:
-                    if unchecked_click and not verified:
+                    if unchecked_click and checks < 2:
                         # It clicked and is about to report without looking. Make it check first,
-                        # so it can't say "Chemistry 2026 is open" when 2024 opened.
-                        verified = True
+                        # so it can't say "Chemistry 2026 is open" when 2024 opened. Checked after the
+                        # *last* click: chess moves were claimed from a check made after the first click.
+                        checks += 1
+                        unchecked_click = False
                         log.info("Checking the screen before Jarvis reports a click result")
                         if launched:
                             time.sleep(1.5)  # an app/window just opened; let it appear before judging
                         shot = self.skills.call("look_at_screen", {})
                         turn.append({"role": "user", "parts": [
-                            {"text": "Before replying, check this screenshot of the result. Say only what it "
-                                     "actually shows, using the exact title, or say plainly that it didn't work."},
+                            {"text": "This is the screen now. Did it work? If more steps are needed, carry on. "
+                                     "Otherwise tell the user the outcome in one short sentence, e.g. 'Done, the "
+                                     "pawn is on f4.' or 'That didn't work, nothing changed.' Don't read out titles."},
                             {"inlineData": {"mimeType": "image/jpeg",
                                             "data": base64.b64encode(shot["image_jpeg"]).decode()}}]})
                         continue
@@ -442,7 +459,7 @@ class Brain:
                 for c in calls:
                     # Clicking and typing both need checking: "name it Jarvis" was typed into the
                     # search bar and reported as done.
-                    if c["name"] in ("click", "type_text", "press_key") or (
+                    if c["name"] in _CLICKS or (
                             c["name"] == "web_search" and _QUESTION.search(text)):
                         unchecked_click = True
                     elif c["name"] == "look_at_screen":

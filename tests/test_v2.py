@@ -73,6 +73,7 @@ def _fake_skills():
     skills.declarations.return_value = []
     skills.browser.profile_summary.return_value = "1. Work [folder: Profile 2]"
     skills.call.return_value = "Opened youtube.com in the Work profile."
+    skills.snapshot.return_value = b"jpg"
     return skills
 
 
@@ -400,6 +401,36 @@ class SpeedTest(unittest.TestCase):
             _response([{"text": "It went into the search bar, not the name field."}])]  # …after the look
         self.assertEqual(b.ask("name it jarvis"), "It went into the search bar, not the name field.")
 
+    def test_screen_requests_come_with_a_screenshot(self):
+        b = self._brain({"model": "lite", "fallback_models": []})
+        b.http = mock.Mock()
+        b.http.post.return_value = _response([{"text": "It's a chess board."}])
+        b.ask("move the pawn from e2 to e4")
+        first = b.http.post.call_args.kwargs["json"]["contents"][-1]["parts"]
+        self.assertTrue(any("inlineData" in p for p in first))  # no separate look_at_screen round trip
+        b.ask("what's the capital of peru")
+        first = b.http.post.call_args.kwargs["json"]["contents"][-1]["parts"]
+        self.assertFalse(any("inlineData" in p for p in first))  # plain questions stay light
+
+    def test_checked_after_the_last_click_not_just_the_first(self):
+        # Chess on 26 Sep: the check ran after clicking the piece, then the second click was claimed unseen.
+        b = self._brain({"model": "lite", "fallback_models": []})
+
+        def call(name, args):
+            return {"text": "Screenshot attached.", "image_jpeg": b"jpg"} if name == "look_at_screen" else "Clicked."
+
+        b.skills.call.side_effect = call
+        b.http = mock.Mock()
+        b.http.post.side_effect = [
+            _response([{"functionCall": {"name": "click", "args": {"x": 1, "y": 1}}}]),
+            _response([{"text": "Moved it."}]),                                           # forced check 1
+            _response([{"functionCall": {"name": "click", "args": {"x": 2, "y": 2}}}]),
+            _response([{"text": "Moved the pawn to f4."}]),                               # forced check 2
+            _response([{"text": "The pawn didn't move."}])]
+        self.assertEqual(b.ask("pawn f2 to f4"), "The pawn didn't move.")
+        looks = [c for c in b.skills.call.call_args_list if c.args[0] == "look_at_screen"]
+        self.assertEqual(len(looks), 2)
+
     def test_speakable(self):
         from jarvis.brain import speakable
 
@@ -487,6 +518,11 @@ class SafetyTest(unittest.TestCase):
         # ordinary numbers stay
         self.assertEqual(redact_secrets("It's 2026 and the volume is 40 percent."),
                          "It's 2026 and the volume is 40 percent.")
+
+    def test_click_pair_is_guarded_like_click(self):
+        from jarvis.skills import needs_confirmation
+        self.assertIsNotNone(needs_confirmation("click_pair", {"target": "drag file to trash"}, lambda: ""))
+        self.assertIsNone(needs_confirmation("click_pair", {"target": "pawn f2 to f4"}, lambda: ""))
 
     def test_click_needs_a_fresh_look(self):
         from jarvis.skills import Skills

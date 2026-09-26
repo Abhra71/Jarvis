@@ -137,7 +137,7 @@ class Assistant:
     def _on_tool(self, name: str):
         if name == "look_at_screen":
             self._set(State.LOOKING)
-        elif name in ("click", "scroll", "hover"):
+        elif name in ("click", "click_pair", "scroll", "hover"):
             self._set(State.ACTING)
         elif self.state in (State.LOOKING, State.ACTING):
             self._set(State.THINKING)

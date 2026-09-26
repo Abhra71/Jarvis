@@ -111,3 +111,23 @@ def scroll_at(x: float, y: float, direction: str = "down", amount: int = 3) -> s
 def hover(x: float, y: float) -> str:
     glide_to(*to_pixels(x, y))
     return "Moved the mouse there."
+
+
+def click_pair(x1: float, y1: float, x2: float, y2: float, drag: bool = False) -> str:
+    """Two spots from the same screenshot in one go: a chess move (piece, then square), or a drag.
+    Saves a whole look-and-think round trip between the two clicks."""
+    if drag:
+        down, up = _MOUSEEVENTF["left"]
+        glide_to(*to_pixels(x1, y1))
+        time.sleep(0.08)
+        user32.mouse_event(down, 0, 0, 0, 0)
+        time.sleep(0.1)
+        glide_to(*to_pixels(x2, y2))
+        time.sleep(0.1)
+        user32.mouse_event(up, 0, 0, 0, 0)
+        log.info("Dragged from %s,%s to %s,%s", x1, y1, x2, y2)
+        time.sleep(0.3)
+        return f"Dragged from {x1:.0f},{y1:.0f} to {x2:.0f},{y2:.0f}."
+    click(x1, y1)
+    click(x2, y2)
+    return f"Clicked {x1:.0f},{y1:.0f} then {x2:.0f},{y2:.0f}."

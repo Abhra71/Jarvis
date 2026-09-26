@@ -58,7 +58,7 @@ _READ_ONLY_TOOLS = {"find_files", "list_folder", "read_text_file"}
 
 def needs_confirmation(name: str, args: dict, front_window) -> str | None:
     """If this action is the kind that can't be taken back, describe it; else None."""
-    if name == "click":
+    if name in ("click", "click_pair"):
         target = str(args.get("target", ""))
         if _RISKY_CLICK.search(target):
             return f"click '{target}'"
@@ -108,6 +108,11 @@ class Skills:
                   "target": (S, "what you're clicking, e.g. 'second video title', 'Send button'", True, None),
                   "button": (S, "", False, ["left", "right"]), "double": (B, "", False, None)},
                  lambda x, y, target="", button="left", double=False: mouse.click(x, y, button, bool(double))),
+            Tool("click_pair", "Click one spot then a second one, both from the same screenshot, in one step: a chess "
+                               "move (piece, then target square), pick-then-place, or drag=true to drag.",
+                 {"x": (I, "", True, None), "y": (I, "", True, None), "x2": (I, "", True, None), "y2": (I, "", True, None),
+                  "target": (S, "what you're doing, e.g. 'pawn f2 to f4'", True, None), "drag": (B, "", False, None)},
+                 lambda x, y, x2, y2, target="", drag=False: mouse.click_pair(x, y, x2, y2, bool(drag))),
             Tool("scroll", "Mouse-wheel scroll at x,y (default middle of screen).",
                  {"direction": (S, "", True, ["up", "down"]), "amount": (I, "notches, default 3", False, None),
                   "x": (I, "", False, None), "y": (I, "", False, None)},
@@ -196,6 +201,15 @@ class Skills:
             return volume.change_volume(1 if action == "up" else -1, step)
         return volume.mute(action == "mute")
 
+    def snapshot(self) -> bytes:
+        """A screenshot taken by Jarvis itself (not asked for by the AI), sent along with a screen request
+        so the AI can act straight away instead of spending a round trip on look_at_screen."""
+        usage.action("look_at_screen")
+        self.on_tool("look_at_screen")
+        jpeg = desktop.screenshot_jpeg()
+        self.screen_fresh = True
+        return jpeg
+
     def declarations(self) -> list[dict]:
         return [t.declaration() for t in self.tools.values()]
 
@@ -210,7 +224,7 @@ class Skills:
             log.info("Blocked %s(%s): %s, needs the user's yes", name, args, risk)
             return (f"Needs confirmation: this would {risk}. Nothing was done. Ask the user one short yes/no "
                     f"question, and do it only after they say yes.")
-        if name == "click" and not self.screen_fresh:
+        if name in ("click", "click_pair") and not self.screen_fresh:
             # Enforced in code: a click must be aimed at what's on screen NOW. On 26 Sep a click aimed at
             # a YouTube window landed on Gmail (YouTube had opened behind it), and "1,2,4" became 3 blind clicks.
             log.info("Blocked click(%s): no fresh screenshot", args)
