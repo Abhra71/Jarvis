@@ -16,7 +16,7 @@ import httpx
 
 from .config import ROOT
 from .groq_backup import GroqBackup
-from .skills import Skills, desktop, mouse
+from .skills import Skills, action_budget, desktop, mouse
 from .skills import volume
 from .usage import usage
 
@@ -138,8 +138,12 @@ def fast_reply(request: str, calls: list[str], results: list, said: str = "") ->
     return None
 
 
+# A leaked "thinking" label at the start of the reply: "thought", "atthought" (26 Sep), "Thought:".
+_THOUGHT_LABEL = re.compile(r"^\s*[a-z]{0,12}thought\s*(?:[:\-]\s*|\n\s*|$)", re.I)
+
+
 def _clean(text: str) -> str:
-    text = re.sub(r"^\s*thought\s*\n", "", text)  # a leaked "thinking" label at the start of the reply
+    text = _THOUGHT_LABEL.sub("", text)
     return re.sub(r"[*_#`]+", "", text).strip()
 
 
@@ -332,6 +336,8 @@ class Brain:
             # 26 Sep: "play Aari Aari" played silently because of a "mute" from an hour before.
             log.info("Unmuting: they asked to play something while other apps were muted")
             volume.mute(False)
+        # Hands-on actions (clicks, typing…) are capped at what was asked; enforced in Skills.call.
+        self.skills.budget = action_budget(text, self.cfg.get("open_ended_actions", 3))
         if unsure:
             text += "\n(Speech recognition was unsure of these words. If they don't clearly make sense, ask.)"
         self._trim_history()
@@ -350,6 +356,7 @@ class Brain:
             return "Stopped."
         finally:
             self.skills.confirmed = False
+            self.skills.budget = None
 
     def _just_asked(self) -> bool:
         """Did Jarvis's last reply end with a question?"""
@@ -449,8 +456,8 @@ class Brain:
                             time.sleep(1.5)  # an app/window just opened; let it appear before judging
                         shot = self.skills.call("look_at_screen", {})
                         turn.append({"role": "user", "parts": [
-                            {"text": "This is the screen now. Did it work? If more steps are needed, carry on. "
-                                     "Otherwise tell the user the outcome in one short sentence, e.g. 'Done, the "
+                            {"text": "This is the screen now. Did it work? Report the result. Do nothing that "
+                                     "wasn't asked. Tell the user the outcome in one short sentence, e.g. 'Done, the "
                                      "pawn is on f4.' or 'That didn't work, nothing changed.' Don't read out titles."},
                             {"inlineData": {"mimeType": "image/jpeg",
                                             "data": base64.b64encode(shot["image_jpeg"]).decode()}}]})

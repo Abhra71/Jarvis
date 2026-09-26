@@ -37,7 +37,10 @@ SITES = {
     "google maps": "https://maps.google.com",
     "maps": "https://maps.google.com",
     "chess": "https://www.chess.com",
-    "chess.com": "https://www.chess.com",
+    "chess com": "https://www.chess.com",  # the offline rules hear "chess.com" / "chess dot com" as this
+    "youtube com": "https://www.youtube.com",
+    "physics wallah": "https://www.pw.live",
+    "pw live": "https://www.pw.live",
 }
 
 SEARCH_URLS = {

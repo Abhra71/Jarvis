@@ -73,6 +73,22 @@ Gemini Lite models hang on ~half of requests.
       17/18, median 1.8 s, and it opened Chrome for "1, 2, 4". Kept default. Smaller screenshots (800px)
       were a bit faster but aimed less precisely, so kept 1100px.
 
+## v3 (plan: docs/v3-plan.md, handover: docs/v3-handoff.md)
+### Step 1. Guardrails (26 Sep)
+- [x] Action budget in code: each request may only take as many clicks/drags/typing/key presses as it
+      asked for ("click No thanks" = 1, "pawn e2 to e4" = 1, "type X" = 2, open-ended = 3 per part);
+      anything beyond is refused in `Skills.call` (the extra chess move, the clicks after "No thanks")
+- [x] The after-click screen check says "Report the result. Do nothing that wasn't asked." (was "carry on")
+- [x] Tool args checked before running: missing/garbled/off-screen values come back as "Not done: missing
+      y2…" so the AI fixes them in the same round, instead of crashing
+- [x] Leaked "…thought" labels ("atthought") stripped from replies
+- [x] "chess dot com" / "chess.com" / "wikipedia dot org" / "physics wallah" open the site offline
+- [ ] Step 2: smaller requests (tool subset per request type, shorter prompt)
+- [ ] Step 3: routing (Groq first for text, Gemini for screen + fallback)
+- [ ] Step 4: click by element name (UI Automation)
+- [ ] Step 5: site packs (chess → YouTube → PW)
+- [ ] Step 6: Whisper on the GPU
+
 ## Next / ideas
 - Rotate the Gemini key (user)
 - Follow-ups spoken while Jarvis is still talking get cut off (by design, it ignores its own voice).

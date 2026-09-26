@@ -11,7 +11,7 @@ import threading
 from dataclasses import dataclass
 from typing import Callable
 
-from ..nlu import Intent
+from ..nlu import Intent, normalize
 from ..usage import usage
 from . import desktop, files, mouse, volume
 from .apps import AppLauncher
@@ -54,6 +54,18 @@ _CHAT_APPS = ("whatsapp", "telegram", "discord", "slack", "messenger", "instagra
 
 # These don't change what's on screen, so a screenshot taken before them is still valid for clicking.
 _READ_ONLY_TOOLS = {"find_files", "list_folder", "read_text_file"}
+# What the offline rules leave of a spoken web address ("chess dot com" / "chess.com" -> "chess com").
+_DOMAIN = re.compile(r"[a-z0-9][a-z0-9 -]{0,40} (com|org|net|io|live|ai|dev)")  # not "in": "open sign in"
+
+
+def site_url(app: str) -> str | None:
+    """The website an offline "open X" means, if X is a known site or a spoken address ("wikipedia dot org")."""
+    if app in SITES:
+        return SITES[app]
+    if _DOMAIN.fullmatch(app):
+        name, tld = app.rsplit(" ", 1)
+        return f"https://www.{name.replace(' ', '')}.{tld}"
+    return None
 
 
 def needs_confirmation(name: str, args: dict, front_window) -> str | None:
@@ -75,6 +87,82 @@ def needs_confirmation(name: str, args: dict, front_window) -> str | None:
     return None
 
 
+# Tools that act on the screen like the user's own hands. A request may use only as many as it asked for:
+# on 26 Sep Jarvis played an extra chess move and kept clicking after "No thanks". Enforced here in code.
+_HANDS = {"click", "click_pair", "type_text", "press_key"}
+_PARTS = re.compile(r"\s*(?:,|;|\bafter that\b|\band then\b|\bthen\b|\band\b)\s*", re.I)
+_ONE_ACTION = re.compile(r"^(click|tap|press|hit|select|choose|move|castle|pause|skip|close the pop ?up)\b|"
+                         r"\b(pawn|knight|bishop|rook|queen|king|castle|takes)\b|\b[a-h][1-8]\b")
+_TYPING = re.compile(r"^(type|write|enter|fill in)\b")  # may need a click on the field first
+_REPEATS = re.compile(r"\b(twice|thrice|\d+ times|every|all|each)\b")
+OPEN_ENDED_ACTIONS = 3
+
+
+def action_budget(request: str, open_ended: int = OPEN_ENDED_ACTIONS) -> int:
+    """How many hands-on actions (clicks, drags, typing, key presses) a request asks for.
+
+    "Click No thanks" = 1, "move e2 to e4" = 1, "type hello" = 2 (focus the field, then type),
+    anything open-ended = `open_ended` per part. "X and Y" adds the parts up.
+    """
+    total = 0
+    for part in _PARTS.split(request or ""):
+        part = normalize(part)
+        if not part:
+            continue
+        if _REPEATS.search(part):
+            total += open_ended
+        elif _ONE_ACTION.search(part):
+            total += 1
+        elif _TYPING.search(part):
+            total += 2
+        else:
+            total += open_ended
+    return max(total, 1)
+
+
+_COORDS = {"x", "y", "x2", "y2"}
+
+
+def check_args(tool: "Tool", args: dict) -> tuple[dict, str | None]:
+    """Tidy the AI's arguments, or say what's wrong so it can fix them in the same round.
+    (A missing y2 in click_pair crashed a chess move on 26 Sep.)"""
+    clean, problems = {}, []
+    for pname, (ptype, _, required, enum) in tool.params.items():
+        v = args.get(pname)
+        if v is None or v == "":
+            if required:
+                problems.append(f"missing {pname}")
+            continue
+        try:
+            if ptype == I:
+                v = int(round(float(v)))
+            elif ptype == B:
+                v = v if isinstance(v, bool) else str(v).strip().lower() in ("true", "yes", "1")
+            else:
+                v = str(v)
+        except (TypeError, ValueError):
+            problems.append(f"{pname} must be a number, not {v!r}")
+            continue
+        if enum:
+            match = next((e for e in enum if str(e).lower() == str(v).strip().lower()), None)
+            if match is None:
+                problems.append(f"{pname} must be one of {', '.join(map(str, enum))}")
+                continue
+            v = match
+        if pname in _COORDS and tool.name in ("click", "click_pair", "scroll", "hover") and not 0 <= v <= 1000:
+            problems.append(f"{pname}={v} is off screen (positions are 0-1000)")
+            continue
+        clean[pname] = v
+    extra = set(args) - set(tool.params)
+    if extra:
+        log.info("Ignoring unknown args for %s: %s", tool.name, sorted(extra))
+    if problems:
+        needed = ", ".join(p for p, spec in tool.params.items() if spec[2])
+        return clean, (f"Not done: {'; '.join(problems)}. Call {tool.name} again with correct args"
+                       f"{f' (required: {needed})' if needed else ''}.")
+    return clean, None
+
+
 class Skills:
     def __init__(self, config: dict, announce: Callable[[str], None]):
         self.config = config
@@ -85,6 +173,7 @@ class Skills:
         self.cancel = threading.Event()  # set when the user says "Hey Jarvis" mid-task: stop at the next step
         self.confirmed = False  # the user just said "yes" to Jarvis's question: risky actions allowed this turn
         self.screen_fresh = False  # a screenshot was taken and nothing has changed the screen since
+        self.budget: int | None = None  # hands-on actions this request may still take (None = no limit)
         self.on_tool: Callable[[str], None] = lambda name: None  # the assistant uses this to update the tray icon
         step = config["volume"]["step"]
 
@@ -222,7 +311,11 @@ class Skills:
             return f"Unknown tool {name}."
         if self.cancel.is_set():
             raise mouse.Cancelled()
-        risk = needs_confirmation(name, args or {}, desktop.front_window)
+        args, problem = check_args(tool, args or {})
+        if problem:
+            log.info("Bad args for %s: %s", name, problem)
+            return problem
+        risk = needs_confirmation(name, args, desktop.front_window)
         if risk and not self.confirmed:
             log.info("Blocked %s(%s): %s, needs the user's yes", name, args, risk)
             return (f"Needs confirmation: this would {risk}. Nothing was done. Ask the user one short yes/no "
@@ -232,6 +325,12 @@ class Skills:
             # a YouTube window landed on Gmail (YouTube had opened behind it), and "1,2,4" became 3 blind clicks.
             log.info("Blocked click(%s): no fresh screenshot", args)
             return "Not clicked: look_at_screen first. The screen may have changed since the last look."
+        if name in _HANDS and self.budget is not None:
+            if self.budget <= 0:
+                log.info("Blocked %s(%s): more actions than the user asked for", name, args)
+                return ("Not done: the user didn't ask for more actions than you've already taken. Stop and "
+                        "report what happened; if something is still needed, ask the user first.")
+            self.budget -= 1
         log.info("Tool %s(%s)", name, args)
         self.calls_made += 1
         # The browser's scroll actions use the mouse too, so show them as mouse use.
@@ -241,7 +340,7 @@ class Skills:
         if name not in _READ_ONLY_TOOLS:
             self.screen_fresh = False  # anything else may change what's on screen
         try:
-            result = tool.fn(**(args or {}))
+            result = tool.fn(**args)
             if name == "look_at_screen":
                 self.screen_fresh = True
             return result
@@ -260,8 +359,9 @@ class Skills:
             case "open_profile":
                 return self.browser.open(None, s["profile"])
             case "open_app":
-                if s["app"] in SITES:
-                    return self.call("open_website", {"url": SITES[s["app"]]})
+                url = site_url(s["app"])
+                if url:
+                    return self.call("open_website", {"url": url})
                 return self.call("open_app", {"name": s["app"]})
             case "set_volume":
                 return self.call("volume", {"action": "set", "level": s["level"]})

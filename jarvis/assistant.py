@@ -11,8 +11,7 @@ from typing import Callable
 from . import nlu
 from .audio import Mic, record_utterance
 from .brain import Brain, BrainUnavailable
-from .skills import Skills
-from .skills.browser import SITES
+from .skills import Skills, site_url
 from .stt import Transcriber
 from .tts import Speaker
 from .usage import usage
@@ -86,7 +85,7 @@ class Assistant:
             return False
         if intent.name == "open_app":
             app = intent.slots["app"]
-            return app in SITES or self.skills.apps.find_exact(app) is not None
+            return site_url(app) is not None or self.skills.apps.find_exact(app) is not None
         return True
 
     def handle_text(self, text: str, unsure: bool = False) -> str:

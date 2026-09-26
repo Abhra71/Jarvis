@@ -60,6 +60,7 @@ def normalize(text: str) -> str:
     text = text.lower().replace("%", " percent")
     text = re.sub(r"[^\w\s]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\bdot (com|org|net|in|io|live|co|ai|dev)\b", r"\1", text)  # "chess dot com" -> "chess com"
     text = words_to_digits(text)
     text = _FILLER.sub("", text)
     text = re.sub(r"\s*\bplease$", "", text)
