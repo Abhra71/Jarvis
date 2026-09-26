@@ -78,6 +78,7 @@ class Speaker:
 
     def chime(self, kind: str = "listen"):
         """'listen' = "Yes, my lord?" after "Hey Jarvis"; 'sleep' = soft falling chime, back to waiting for "Hey Jarvis"."""
+        log.info("Sound: %s", "wake reply" if kind == "listen" else "back-to-sleep chime")
         with self._lock:
             self._play(self._chimes.get(kind, SLEEP_CHIME))
 

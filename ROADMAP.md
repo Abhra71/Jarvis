@@ -26,24 +26,31 @@ Gemini Lite models hang on ~half of requests.
       every other app and keeps Jarvis audible; if the PC is muted by hand, Jarvis does the same before speaking.
       Known gap: an app that starts making sound *after* "mute" isn't muted.
 
-## Next
+### 2b. Clear states + stop (26 Sep)
+- [x] Say "Hey Jarvis" while it's busy → it stops at the next step, says "Stopped.", then "Yes, my lord?"
+      (wake-word based, so background video/music can't interrupt it). Replaces the "one moment" tone idea.
+- [x] Wake reply and back-to-sleep chime are written to the log
 
-### 2b. Clear states
-- [ ] Soft "one moment" tone if the user speaks while Jarvis is busy
-- Evidence: 10 of 22 wake-ups on 26 Sep ended in "no speech after wake word"
+### 3. Accuracy (26 Sep)
+- [x] Do only what was asked; say exactly what it opened (prompt rules)
+- [x] Code check: after a click, it can't report success without a screenshot of the result
+- [x] Answer general-knowledge questions directly; search only when asked or for live data
+- [x] Speech recogniser primed with installed app names; "cloud" alias for the Claude app;
+      failed app lookups suggest the closest installed names
 
-### 3. Accuracy
-- [ ] Do only what was asked ("Go back" turned into back + 3 extra clicks)
-- [ ] Say exactly what it opened; never claim the wrong thing ("2026" → said "2024 is open")
-- [ ] Still seen after the speed work: "play the second video" → "I've started playing it" without looking to confirm
-- [ ] "What's the tallest mountain?" once did a Google search instead of just answering
-- [ ] Recognise installed app names in speech ("Claude" heard as "Cloud"; the Claude app wasn't found)
+### 4. Bluetooth headphones (26 Sep)
+- [x] Voice plays via Windows' Sound Mapper = always the current default output (headphones when connected)
+- [x] Mic never uses a Bluetooth "Hands-Free" headset, so headphones stay in high-quality music mode
+- Not yet tried with the Rockerz 480 connected
 
-### 4. Bluetooth headphones
-- [ ] Jarvis's voice follows the current Windows output device (headphones when connected, no restart)
-- [ ] Keep the mic on the laptop (a Bluetooth headset mic forces "phone call" quality on everything)
+### 5. Safety + housekeeping (26 Sep)
+- [x] Hard, code-level confirmation before send/post/buy/delete-type clicks and Enter in chat/mail apps
+- [x] Git repository (local); GitHub remote pending the user creating an empty repo
 
-## Later / ideas
-- Hard, code-level confirmation before Send / Buy / Post / Delete-type clicks (now only an AI instruction)
-- Git version control for the project
-- "Stop" while Jarvis is busy (barge-in)
+## Next / ideas
+- Push to GitHub (waiting for the repo URL)
+- Rotate the Gemini key (user)
+- Follow-ups spoken while Jarvis is still talking get cut off (by design, it ignores its own voice).
+  Idea: a very short tick when it's ready for the follow-up.
+- An app that starts making sound after "mute" isn't muted
+- Faster end-of-speech detection (0.8 s → 0.6 s), risky with mid-sentence pauses
