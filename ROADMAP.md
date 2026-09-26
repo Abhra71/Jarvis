@@ -45,10 +45,9 @@ Gemini Lite models hang on ~half of requests.
 
 ### 5. Safety + housekeeping (26 Sep)
 - [x] Hard, code-level confirmation before send/post/buy/delete-type clicks and Enter in chat/mail apps
-- [x] Git repository (local); GitHub remote pending the user creating an empty repo
+- [x] Git repository, pushed to https://github.com/Abhra71/Jarvis
 
 ## Next / ideas
-- Push to GitHub (waiting for the repo URL)
 - Rotate the Gemini key (user)
 - Follow-ups spoken while Jarvis is still talking get cut off (by design, it ignores its own voice).
   Idea: a very short tick when it's ready for the follow-up.
