@@ -1,6 +1,49 @@
 # Jarvis v3: handover (26 Sep 2026)
 
-Start here in a new chat: "start the Jarvis v3 build". Read this file, [v3-plan.md](v3-plan.md) and [ai-provider-report.md](ai-provider-report.md).
+Start here in a new chat: "continue the Jarvis v3 build". Read this file, [v3-plan.md](v3-plan.md) and [ai-provider-report.md](ai-provider-report.md).
+
+## Progress (updated 27 Sep, end of session 1)
+**Done, committed and pushed** (ROADMAP.md has details, the report has measurements):
+- **Step 1, guardrails** (`9d4d728`): action budget in `Skills.call`, arg checks, "carry on" removed, "thought" leak, spoken addresses.
+- **Steps 2–3, smaller requests + routing** (`182facc`):
+  - `jarvis/router.py` sorts requests by kind and picks the tool groups; `more_tools` lets the AI ask for more.
+  - The prompt is built from sections.
+  - Groq goes first for text, Gemini for the screen and as fallback, with a hand-over (`NeedsVision`).
+  - Groq 16/16 at ~1,070 tokens.
+- **Step 4, click by name** (`7dec1eb`): `jarvis/skills/elements.py` (`page_elements`, `click_element`). Named screen items go to Groq as text. Groq 12/12 in 0.8 s.
+- 72 unit tests pass: `.venv\Scripts\python -m unittest discover tests`.
+
+**Not started / next: step 5a, chess pack** (`jarvis/skills/sites/chess.py`):
+- `python-chess` is installed in `.venv` and listed in requirements.txt.
+- **Move list via UI Automation** (read 27 Sep from a live coach game): the page Document has Text nodes in order.
+  - They read: `'1.' 'f4' 'e5' '2.' 'c4' 'Ä' 'e7'`.
+  - **Pieces are icon-font glyphs in their own Text node**: 'Ä' + 'e7' = Be7. Map the glyphs to K/Q/R/B/N; so far only 'Ä' = bishop is known, so read the others from a game.
+  - The page also shows the opponent ("Coach Nadia (100)"), the title "Play Chess with a Virtual Coach" (use it for the autoplay check: bots/coach only), and the buttons Resign / Show Hint / Undo.
+- **Board:**
+  - Port `tools/prototypes/find_board.py`.
+  - Tighten the ~8 px offset: refine each edge with the 7 inner grid lines.
+  - Orientation: compare which squares look occupied with the position from the move list, in both orientations (sturdier than piece brightness).
+  - Test on the synthetic boards in `tools/eval_screens.py` (both orientations).
+- **Voice moves:**
+  - Parse "pawn e2 to e4 / e4 / knight f3 / castle / takes on d5" into constraints, then filter python-chess's legal moves.
+  - One match: drag it. Several: "Which knight?".
+  - Promotion defaults to queen.
+  - Verify by re-reading the move list.
+- **Hook:** add `jarvis/skills/sites/__init__.py` `handle(text, skills)`, called in `assistant._handle` before the offline rules when the site is in front. Usage route: `site:chess`.
+- **Autoplay:** only on "auto mode on", only vs bots or coach. Use Stockfish if its path is configured, else a small Python engine; say which.
+
+**Then:** 5b YouTube, 5c PW, 6 Whisper on the GPU (estimate ~3 h of build in total).
+
+**Ask the user at the end, in one go:**
+- the PW discovery session (logged in);
+- permission to download Stockfish (an .exe; Smart App Control may block it);
+- a voice test of the three sites;
+- rotating the Gemini key.
+
+**Lessons for the next session:**
+- Don't put regexes or `\n` in bash heredoc Python scripts: backslashes got mangled (`\b` became a backspace). Use the Edit tool.
+- Python `write_text` on Windows writes CRLF: pass `newline="\n"`. The repo is LF.
+- Tests patch `load_api_key` and `elements.front_is_browser` in `setUpModule`, so the real `.env` keys and the real front window never leak into tests.
 
 ## Decisions made with the user
 - **AI providers: Groq + Gemini only.** Everything else is dropped (Mistral, NVIDIA, OpenRouter, Cerebras, GitHub Models, SambaNova, DeepSeek).
