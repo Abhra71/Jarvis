@@ -11,6 +11,7 @@ import miniaudio
 import numpy as np
 import sounddevice as sd
 
+from .audio import pick_output_device
 from .skills import volume
 
 log = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ class Speaker:
         self.wake_reply = cfg.get("wake_reply", "Yes, my lord?")
         self._lock = threading.Lock()  # timers can finish while Jarvis is already talking
         self._chimes = {"listen": LISTEN_CHIME, "sleep": SLEEP_CHIME}
+        self._output = pick_output_device()  # follows the Windows default (headphones when connected)
 
     def prepare(self):
         """Pre-record the wake reply ("Yes, my lord?") at startup so it plays instantly, not after a network trip.
@@ -71,7 +73,7 @@ class Speaker:
 
     def _play(self, audio: np.ndarray, rate: int = _EDGE_RATE):
         volume.ensure_jarvis_audible()  # a muted PC must not silence Jarvis itself
-        sd.play(audio, rate)
+        sd.play(audio, rate, device=self._output)
         sd.wait()
 
     def chime(self, kind: str = "listen"):

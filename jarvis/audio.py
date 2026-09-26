@@ -17,13 +17,43 @@ def list_devices() -> str:
     return str(sd.query_devices())
 
 
-def _find_input_device(name: str):
-    if not name:
-        return None
-    for idx, dev in enumerate(sd.query_devices()):
-        if dev["max_input_channels"] > 0 and name.lower() in dev["name"].lower():
-            return idx
-    log.warning("Mic %r not found, using default", name)
+# Bluetooth headphones have a high-quality music mode with no mic, and a "Hands-Free"
+# headset mode with a mic but phone-call quality. Opening the headset mic switches ALL audio
+# to phone-call quality, so Jarvis never listens through one; it uses the laptop mic.
+_BLUETOOTH_MIC = ("hands-free", "hands free", "bthhfenum", "headset", "bluetooth", " ag audio")
+
+
+def _is_bluetooth(name: str) -> bool:
+    return any(marker in name.lower() for marker in _BLUETOOTH_MIC)
+
+
+def pick_input_device(name: str = "") -> int | None:
+    """A real, non-Bluetooth microphone (MME list, so each device appears once)."""
+    mme = next(i for i, api in enumerate(sd.query_hostapis()) if api["name"] == "MME")
+    mics = [(i, d) for i, d in enumerate(sd.query_devices())
+            if d["hostapi"] == mme and d["max_input_channels"] > 0
+            and "sound mapper" not in d["name"].lower() and not _is_bluetooth(d["name"])]
+    if name:
+        for i, d in mics:
+            if name.lower() in d["name"].lower():
+                return i
+        log.warning("Mic %r not found (or it's a Bluetooth headset mic); picking another", name)
+    default = sd.default.device[0]
+    for i, d in mics:
+        if i == default:
+            return i
+    if mics:
+        return mics[0][0]
+    log.warning("No non-Bluetooth microphone found; using the Windows default")
+    return None
+
+
+def pick_output_device() -> int | None:
+    """Windows' "Sound Mapper": always plays on whatever the current default output is, so Jarvis's
+    voice moves to your headphones when you connect them, with no restart."""
+    for i, d in enumerate(sd.query_devices()):
+        if d["max_output_channels"] > 0 and d["name"].lower().startswith("microsoft sound mapper - output"):
+            return i
     return None
 
 
@@ -38,7 +68,7 @@ class Mic:
             channels=1,
             dtype="int16",
             blocksize=FRAME_SAMPLES,
-            device=_find_input_device(device),
+            device=pick_input_device(device),
             callback=self._callback,
         )
 
