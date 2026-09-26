@@ -244,6 +244,56 @@ def find_on_page(text: str) -> str:
             "highlighted. Use look_at_screen to see it before clicking.")
 
 
+def _uia():
+    import comtypes.client
+    comtypes.client.GetModule("UIAutomationCore.dll")
+    from comtypes.gen import UIAutomationClient as UIA
+    return UIA, comtypes.client.CreateObject(UIA.CUIAutomation, interface=UIA.IUIAutomation)
+
+
+def _browser_tabs() -> list[tuple[int, str, object]]:
+    """Every tab of every open browser window as (window, tab title, tab element), front window first."""
+    UIA, uia = _uia()
+    is_tab = uia.CreatePropertyCondition(UIA.UIA_ControlTypePropertyId, UIA.UIA_TabItemControlTypeId)
+    tabs = []
+    for hwnd, proc, _ in _app_windows():
+        if proc not in BROWSERS:
+            continue
+        found = uia.ElementFromHandle(hwnd).FindAll(UIA.TreeScope_Descendants, is_tab)
+        for i in range(found.Length):
+            el = found.GetElement(i)
+            tabs.append((hwnd, el.CurrentName, el))
+    return tabs
+
+
+def close_tab(name: str) -> str:
+    """Close the browser tab whose title matches `name`, in any browser window: it's clicked (so you see which
+    one) and closed with Ctrl+W. On 26 Sep "close the chess tab" closed whichever tab was in front."""
+    try:
+        tabs = _browser_tabs()
+    except Exception:
+        log.debug("Couldn't list tabs", exc_info=True)
+        return "I couldn't read the browser's tabs."
+    if not tabs:
+        return "No browser window is open."
+    want = name.lower().removesuffix(" tab").strip()
+    scored = sorted(((fuzz.partial_ratio(want, t[1].lower()), t) for t in tabs), key=lambda s: -s[0])
+    best_score, (hwnd, title, el) = scored[0]
+    if best_score < 75:
+        return f"I don't see a {want} tab."
+    close_matches = [t for s, t in scored if s >= best_score - 5]
+    if len(close_matches) > 1:
+        names = "; ".join(t[1][:40] for t in close_matches[:3])
+        return f"More than one tab matches {want}: {names}. Ask which one."
+    _focus(hwnd)
+    r = el.CurrentBoundingRectangle
+    w, h = jmouse.screen_size()
+    jmouse.click((r.left + r.right) / 2 / w * 1000, (r.top + r.bottom) / 2 / h * 1000)
+    keyboard.send_keys("^w")
+    time.sleep(STEP_PAUSE)
+    return f"Closed the {want} tab."
+
+
 def current_url() -> str | None:
     """Read the front browser tab's address from Chrome/Edge's address bar (via Windows UI Automation)."""
     hwnd = _front_browser()

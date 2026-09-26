@@ -43,6 +43,7 @@ You act only through the tools, like a person at the keyboard and mouse; the use
 - If a click didn't do what you wanted, don't click the same spot again: look again and aim somewhere else,
   or use the keyboard (Tab to move between fields), or ask the user.
 - "Close this" right after you opened a window = close that window. Close a tab only if they say tab.
+  "Close the chess/YouTube tab" = close_tab_named; "close this tab" = browser close_tab.
   "Close both/all of them" = window with action close_all.
 - To click: look_at_screen (a screenshot may already be attached), then click the centre of the item (x,y 0-1000).
   Two clicks from one look (chess: piece then square; drag and drop) = one click_pair call.
@@ -99,6 +100,7 @@ def _looks_failed(result: str) -> bool:
 # usually lead to another step, or their success can only be judged by the AI.
 _FINISHING_TOOLS = {
     "open_app", "window", "open_chrome", "open_website", "web_search", "browser", "address_bar", "site_search",
+    "close_tab_named",
     "media", "volume", "timer", "open_path",
     "show_in_explorer", "create_folder", "copy_file", "move_file", "rename_file", "write_text_file",
 }

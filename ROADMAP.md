@@ -68,7 +68,8 @@ Gemini Lite models hang on ~half of requests.
       chess words in the hints; shaky transcripts are marked so the AI asks instead of guessing
 - [x] "Open chess" opens chess.com; "play …" unmutes first (Aari Aari played silently after an old "mute")
 - Tip: say moves as "pawn f2 to f4" (letter first); "2F to 4F" confuses it
-- To do: close a named tab ("close the chess tab" closed the wrong one); measure Gemini speed settings
+- [x] "Close the chess tab" closes the tab with that name (it used to close the front tab)
+- To do: measure Gemini speed settings
 
 ## Next / ideas
 - Rotate the Gemini key (user)
