@@ -53,7 +53,8 @@ GROUPS = {
              "address_bar", "site_search"],
     "system": ["volume", "media", "timer"],
     "keys": ["type_text", "press_key"],
-    "screen": ["look_at_screen", "click", "click_pair", "scroll", "hover", "find_on_page"],
+    "screen": ["page_elements", "click_element", "look_at_screen", "click", "click_pair", "scroll", "hover",
+               "find_on_page"],
     "files": ["find_files", "list_folder", "open_path", "show_in_explorer", "create_folder", "copy_file",
               "move_file", "rename_file", "read_text_file", "write_text_file"],
 }
@@ -98,6 +99,27 @@ def missing_groups(kind: str, extra_groups: set[str] = frozenset(), request: str
 # Words that mean the Chrome profile list is relevant.
 _PROFILES = re.compile(r"\b(profile|profiles|account|accounts|chrome|main|personal|backup|work|ai|first|second|"
                        r"third|fourth|fifth|1st|2nd|3rd|4th|5th)\b")
+
+
+# Screen requests about things that have no name to click by: board squares, pictures, what it looks like.
+# These need a screenshot (Gemini); the rest can use the list of named items as text (Groq).
+_EYES = re.compile(r"\b(pawn|knight|bishop|rook|queen|king|castle|takes|board|see|look|looks|describe|picture|"
+                   r"image|photo|thumbnail|colou?r|what'?s on (the |my )?screen|what'?s showing)\b|\b[a-h] ?[1-8]\b")
+
+
+_VERB = re.compile(r"^(open|go to|click( on)?|tap( on)?|select|choose|show( me)?|take me to|play|press|start|"
+                   r"switch to)\s+(the |my |a |an )?")
+
+
+def thing_named(text: str) -> str:
+    """"open chemistry" -> "chemistry": the thing a command is about, to look for on screen."""
+    t = _FILLER.sub("", (text or "").lower().strip()).strip(" .!?")
+    m = _VERB.match(t)
+    return t[m.end():].strip() if m else ""
+
+
+def needs_eyes(text: str) -> bool:
+    return bool(_EYES.search(_FILLER.sub("", (text or "").lower().strip())))
 
 
 def wants_profiles(text: str) -> bool:

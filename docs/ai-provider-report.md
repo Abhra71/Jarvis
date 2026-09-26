@@ -61,3 +61,14 @@ Each request now carries only the tools and prompt rules its kind of job needs (
 - Gemini's one command "miss" asked for the typing tools on "send hi to mom on whatsapp" instead of opening WhatsApp first: harmless (sending needs a spoken yes anyway).
 - The screen miss is the flipped (Black) board again; chess squares will be computed in code (step 5).
 - About half the tokens per request means about twice as many requests fit in Groq's 8k/min and 200k/day.
+
+## After v3 step 4: the screen as text (26 Sep, evening)
+Suite `elements` in `tools/ai_eval.py`: 12 requests on item lists like the ones UI Automation reads from YouTube, Physics Wallah and chess.com (made-up names). Right answer = `click_element` on the right item.
+
+| Model | Right item | Typical / slowest | Tokens in |
+|---|---|---|---|
+| Groq gpt-oss-120b | **12/12** | 0.8 s / 1.5 s | 1,800 |
+| Groq gpt-oss-20b | 11/12 (once replied without clicking) | 0.7 s / 1.0 s | 1,800 |
+| Gemini 3.5 Flash-Lite | 12/12 | 1.1 s / 8.7 s (one slow reply) | 2,500 |
+
+Compared with clicking from a screenshot (10–11/12, 1.5–2.5 s, ~3,400 tokens), named items are exact and need no picture.

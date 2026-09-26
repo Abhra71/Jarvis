@@ -103,18 +103,19 @@ class GroqBackup:
         raise RuntimeError(f"Groq failed ({last})")
 
     def ask(self, system: str, history: list[dict], text: str, declarations,
-            call_tool, max_steps: int = 6, finish=None) -> tuple[str, list[dict]]:
+            call_tool, max_steps: int = 6, finish=None, context: str = "") -> tuple[str, list[dict]]:
         """Returns (reply, what to add to the shared history in Gemini format).
 
         declarations: a list, or a function returning the current list (the tools can grow mid-request).
         finish(tool_names, results, said) -> reply to speak now, or None to ask the AI again.
+        context: extra text sent with the request (e.g. the on-screen items) but not kept in history.
         """
         messages = [{"role": "system", "content": system}]
         for c in history:  # earlier turns as plain text; tool details aren't needed
             t = _text(c)
             if t:
                 messages.append({"role": "assistant" if c["role"] == "model" else "user", "content": t})
-        messages.append({"role": "user", "content": text})
+        messages.append({"role": "user", "content": f"{text}\n{context}" if context else text})
         def tools():
             decls = declarations() if callable(declarations) else declarations
             return [{"type": "function", "function": {

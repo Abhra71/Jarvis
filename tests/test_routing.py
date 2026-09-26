@@ -14,10 +14,14 @@ def setUpModule():
     from jarvis import brain
     _no_keys = mock.patch.object(brain, "load_api_key", return_value=None)
     _no_keys.start()
+    global _not_browser  # never depend on which window is in front on this PC
+    _not_browser = mock.patch("jarvis.skills.elements.front_is_browser", return_value=False)
+    _not_browser.start()
 
 
 def tearDownModule():
     _no_keys.stop()
+    _not_browser.stop()
 
 
 def _skills():

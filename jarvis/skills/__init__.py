@@ -8,12 +8,13 @@ Every tool returns a short sentence describing what happened.
 import logging
 import re
 import threading
+import time
 from dataclasses import dataclass
 from typing import Callable
 
 from ..nlu import Intent, normalize
 from ..usage import usage
-from . import desktop, files, mouse, volume
+from . import desktop, elements, files, mouse, volume
 from .apps import AppLauncher
 from .browser import SEARCH_URLS, SITES, Browser
 from .timer import Timers
@@ -47,13 +48,13 @@ S, I, B = "STRING", "INTEGER", "BOOLEAN"
 # Hard safety check in code (not just an instruction to the AI): these need the user's spoken "yes".
 _RISKY_CLICK = re.compile(
     r"\b(send|post|publish|tweet|buy|purchase|pay|payment|checkout|check out|place order|order now|subscribe|"
-    r"delete|remove|trash|sign in|log in|login|submit|transfer|confirm|donate|install)\b", re.I)
+    r"delete|remove|trash|sign in|log in|login|submit|transfer|confirm|donate|install|resign|abort)\b", re.I)
 _CHAT_APPS = ("whatsapp", "telegram", "discord", "slack", "messenger", "instagram", "gmail", "outlook", "teams",
               "signal", "mail")
 
 
 # These don't change what's on screen, so a screenshot taken before them is still valid for clicking.
-_READ_ONLY_TOOLS = {"find_files", "list_folder", "read_text_file"}
+_READ_ONLY_TOOLS = {"find_files", "list_folder", "read_text_file", "page_elements"}
 # What the offline rules leave of a spoken web address ("chess dot com" / "chess.com" -> "chess com").
 _DOMAIN = re.compile(r"[a-z0-9][a-z0-9 -]{0,40} (com|org|net|io|live|ai|dev)")  # not "in": "open sign in"
 
@@ -70,7 +71,7 @@ def site_url(app: str) -> str | None:
 
 def needs_confirmation(name: str, args: dict, front_window) -> str | None:
     """If this action is the kind that can't be taken back, describe it; else None."""
-    if name in ("click", "click_pair"):
+    if name in ("click", "click_pair", "click_element"):
         target = str(args.get("target", ""))
         if _RISKY_CLICK.search(target):
             return f"click '{target}'"
@@ -89,7 +90,7 @@ def needs_confirmation(name: str, args: dict, front_window) -> str | None:
 
 # Tools that act on the screen like the user's own hands. A request may use only as many as it asked for:
 # on 26 Sep Jarvis played an extra chess move and kept clicking after "No thanks". Enforced here in code.
-_HANDS = {"click", "click_pair", "type_text", "press_key"}
+_HANDS = {"click", "click_pair", "click_element", "type_text", "press_key"}
 _PARTS = re.compile(r"\s*(?:,|;|\bafter that\b|\band then\b|\bthen\b|\band\b)\s*", re.I)
 _ONE_ACTION = re.compile(r"^(click|tap|press|hit|select|choose|move|castle|pause|skip|close the pop ?up)\b|"
                          r"\b(pawn|knight|bishop|rook|queen|king|castle|takes)\b|\b[a-h][1-8]\b")
@@ -173,6 +174,7 @@ class Skills:
         self.cancel = threading.Event()  # set when the user says "Hey Jarvis" mid-task: stop at the next step
         self.confirmed = False  # the user just said "yes" to Jarvis's question: risky actions allowed this turn
         self.screen_fresh = False  # a screenshot was taken and nothing has changed the screen since
+        self._element: elements.Element | None = None  # what click_element is about to click
         self.budget: int | None = None  # hands-on actions this request may still take (None = no limit)
         self.on_tool: Callable[[str], None] = lambda name: None  # the assistant uses this to update the tray icon
         step = config["volume"]["step"]
@@ -189,6 +191,11 @@ class Skills:
                  {"app": (S, "", True, None),
                   "action": (S, "", True, ["focus", "minimize", "maximize", "restore", "close", "close_all"])},
                  lambda app, action: desktop.window_action(app, action)),
+            Tool("page_elements", "List the clickable items (buttons, links, fields) in the front window, with ids.",
+                 {}, lambda: elements.page_elements()),
+            Tool("click_element", "Click an on-screen item by its id from page_elements, or by its name.",
+                 {"id": (I, "", False, None), "name": (S, "", False, None), "double": (B, "", False, None)},
+                 lambda id=None, name=None, double=False, target="": self._click_element(bool(double))),
             Tool("look_at_screen", "Screenshot of the whole screen. Positions are x,y from 0 to 1000.", {},
                  lambda: {"text": "Screenshot attached. Give positions as x,y from 0 to 1000 of this image.",
                           "image_jpeg": desktop.screenshot_jpeg()}),
@@ -285,6 +292,11 @@ class Skills:
         ]
         self.tools = {t.name: t for t in tools}
 
+    def _click_element(self, double: bool) -> str:
+        result = elements.click(self._element, double)
+        time.sleep(0.3)  # let a new page or pop-up start to show
+        return result
+
     def _volume(self, action: str, level=None) -> str:
         step = self.config["volume"]["step"]
         if action == "set":
@@ -318,6 +330,14 @@ class Skills:
         if problem:
             log.info("Bad args for %s: %s", name, problem)
             return problem
+        if name == "click_element":
+            # Find the item first: the confirmation check needs its real name ("[12]" might be "Send").
+            if args.get("id") is None and not args.get("name"):
+                return "Not done: give the item's id (from page_elements) or its name."
+            self._element, why = elements.resolve(args.get("id"), args.get("name"))
+            if not self._element:
+                return why
+            args = {**args, "target": self._element.name}
         risk = needs_confirmation(name, args, desktop.front_window)
         if risk and not self.confirmed:
             log.info("Blocked %s(%s): %s, needs the user's yes", name, args, risk)

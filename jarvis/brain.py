@@ -17,7 +17,7 @@ import httpx
 from . import router
 from .config import ROOT
 from .groq_backup import GroqBackup, NeedsVision
-from .skills import Skills, action_budget, desktop, mouse
+from .skills import Skills, action_budget, desktop, elements, mouse
 from .skills import volume
 from .usage import usage
 
@@ -48,8 +48,9 @@ tab" = close_tab_named; "close this tab" = browser close_tab. "Close all of them
 - "It", "that" = what you did last or the front window; if unclear, ask. Searching, and opening, closing or \
 switching apps, windows and tabs, need no confirmation: just do them."""
 
-_SCREEN = """- To click: use the screenshot (one may be attached, else look_at_screen); click the centre of the \
-item, x,y 0-1000. Two clicks from one look (chess: piece then square; drag) = one click_pair. Skip the browser's \
+_SCREEN = """- To click a named item (button, link, field): click_element with its id from the on-screen list (one \
+may be given; else page_elements). Only for things with no name (pictures, boards, games) use the screenshot \
+(one may be attached, else look_at_screen) and click the centre, x,y 0-1000. Two clicks from one look (chess: piece then square; drag) = one click_pair. Skip the browser's \
 tab/toolbar strip (top ~10%) unless asked. "The second video" = count results top to bottom, skipping ads/Shorts.
 - If a click didn't work, don't click the same spot again: aim elsewhere, use the keyboard, or ask.
 - Look again only if the next step needs the new screen, or to confirm before reporting. To find text on a long \
@@ -124,7 +125,7 @@ def _looks_failed(result: str) -> bool:
 # usually lead to another step, or their success can only be judged by the AI.
 _FINISHING_TOOLS = {
     "open_app", "window", "open_chrome", "open_website", "web_search", "browser", "address_bar", "site_search",
-    "close_tab_named",
+    "close_tab_named", "click_element",
     "media", "volume", "timer", "open_path",
     "show_in_explorer", "create_folder", "copy_file", "move_file", "rename_file", "write_text_file",
 }
@@ -404,6 +405,18 @@ class Brain:
         # question Jarvis just asked. Decided here in code, not left to the AI.
         self.skills.confirmed = _is_yes(text) and self._just_asked()
         self.skills.screen_fresh = False  # time has passed since any earlier screenshot
+        self.screen_items = ""  # the on-screen items as text, when that's enough (no screenshot needed)
+        if self.kind == "screen" and not router.needs_eyes(text):
+            items = self._call("page_elements", {})
+            if isinstance(items, str) and items.startswith("[1]"):
+                self.screen_items = items
+        elif self.kind == "action" and router.thing_named(text) and elements.front_is_browser():
+            # "Open chemistry" on the PW page means the Chemistry link on screen, not an app. One quick
+            # read (~0.05 s) tells which.
+            items = self._call("page_elements", {})
+            if isinstance(items, str) and items.startswith("[1]") and elements.mentions(router.thing_named(text)):
+                self.kind, self.screen_items = "screen", items
+                log.info("%r is on screen: handling it as a screen request", router.thing_named(text))
         try:
             return self._ask_any(text)
         except mouse.UserTookOver:
@@ -428,7 +441,8 @@ class Brain:
     def _chain(self) -> list[str]:
         """Which AI to ask, in order. Groq (~1 s) for commands and questions; Gemini (can see) first for
         anything about the screen or needing live facts read off a results page, and as the fallback."""
-        default = ["gemini", "groq"] if self.kind in ("screen", "live") else ["groq", "gemini"]
+        needs_gemini = self.kind == "live" or (self.kind == "screen" and not self.screen_items)
+        default = ["gemini", "groq"] if needs_gemini else ["groq", "gemini"]
         order = list(self.cfg.get("routing", {}).get(self.kind, default))
         if "groq" in order and time.monotonic() < self.gemini_slow_until:
             order.remove("groq")
@@ -472,11 +486,16 @@ class Brain:
             order += [f"groq:{m}" for m in self.groq.models]
         return order
 
+    def _items_note(self) -> str:
+        if not self.screen_items:
+            return ""
+        return f"(Items on screen now, for click_element: {self.screen_items})"
+
     def _ask_groq(self, text: str) -> str:
         self.skills.screen_fresh = False  # a screenshot attached for Gemini wasn't seen by Groq
         try:
             reply, turn = self.groq.ask(self._system_prompt(text), self.history, text, self._declarations,
-                                        self._call, self.cfg.get("max_steps", 6),
+                                        self._call, self.cfg.get("max_steps", 6), context=self._items_note(),
                                         finish=lambda names, results, said: fast_reply(text, names, results, said))
         except (httpx.HTTPError, RuntimeError, KeyError) as e:
             log.warning("Groq failed: %s", e)
@@ -495,6 +514,8 @@ class Brain:
                                           "positions are x,y from 0 to 1000. Don't repeat those steps.)"},
                                  {"inlineData": {"mimeType": "image/jpeg",
                                                  "data": base64.b64encode(handoff.image).decode()}}]
+        elif self.screen_items:
+            turn[0]["parts"].append({"text": self._items_note()})
         elif self.kind == "screen":
             # Chess on 26 Sep: every move was look, think, click, look, think, click (13-32 s). Sending the
             # screen up front lets the AI act in its first answer.

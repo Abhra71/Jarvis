@@ -95,8 +95,16 @@ Gemini Lite models hang on ~half of requests.
 - [x] Measured: Groq 16/16 at ~1,070 tokens (was 15/16 at 2,200); Gemini 11/12 screen clicks at 3,360 (was
       10/12 at 4,400). See docs/ai-provider-report.md
 
+### Step 4. Click by name (26 Sep)
+- [x] `page_elements`: the front window's named buttons/links/fields as a numbered list, read with Windows UI
+      Automation in ~0.05-0.2 s (in Chrome: only the web page)
+- [x] `click_element(id | name)`: re-reads the screen, finds the item, checks it (a "Send"/"Resign" item still
+      needs your yes, even by id; counts in the action budget) and glides the mouse to its centre
+- [x] Screen requests with named items go to Groq as text, no screenshot; boards/pictures still go to Gemini.
+      "Open chemistry" with the PW page in front clicks the Chemistry link
+- [x] Measured: Groq 12/12 right item in 0.8 s (screenshot clicking was 10-11/12 in 1.5-2.5 s)
+
 ### Still to do
-- [ ] Step 4: click by element name (UI Automation)
 - [ ] Step 5: site packs (chess → YouTube → PW)
 - [ ] Step 6: Whisper on the GPU
 

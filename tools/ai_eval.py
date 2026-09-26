@@ -70,9 +70,61 @@ FAKE_CONTEXT = dict(
              "3. Backup [folder: Profile 3]")
 
 
+# Screen-as-text suite (v3 step 4): the item list Jarvis reads with UI Automation, as text, and the
+# request; the right answer is click_element on the named item. Lists modelled on real reads of
+# YouTube, Physics Wallah and chess.com (26 Sep proof check), with made-up account names.
+_YT = ['link "Home"', 'link "Shorts"', 'link "Subscriptions"', 'field "Search"', 'button "Search"',
+       'button "Search with your voice"', 'button "Sign in"', 'link "Shop the sale - Sponsored - MegaStore"',
+       'link "Lofi beats to study and relax"', 'link "Aari Aari (Official Video)"',
+       'link "Physics: Laws of Motion in 1 shot"', 'link "Cooking pasta 101"', 'link "Shorts: cat jumps"']
+_YT_POPUP = _YT + ['button "No thanks"', 'button "Get Premium"']
+_PW = ['link "Study"', 'link "Batches"', 'link "Test Series"', 'link "My Test"',
+       'link "YOUR BATCH: VICTORY 2027 (Class 10th ICSE)"', 'link "All Classes"', 'link "All Tests"',
+       'link "My Doubts"', 'link "Physics"', 'link "Chemistry"', 'link "Mathematics"', 'link "Biology"']
+_CHESS = ['link "Play"', 'link "Puzzles"', 'link "Learn"', 'link "Play Bots"', 'link "Play Coach"',
+          'button "Resign"', 'button "Show Hint"', 'button "Undo"', 'button "New Game"', 'button "Rematch"',
+          'button "No, thank you"', 'button "Start Trial"']
+ELEMENT_CASES = [
+    ("click No thanks", _YT_POPUP, "No thanks"),
+    ("play the second video", _YT, "Aari Aari (Official Video)"),
+    ("open the physics video", _YT, "Physics: Laws of Motion in 1 shot"),
+    ("click the search box", _YT, "Search"),
+    ("open batches", _PW, "Batches"),
+    ("go to all classes", _PW, "All Classes"),
+    ("open my batch", _PW, "YOUR BATCH: VICTORY 2027 (Class 10th ICSE)"),
+    ("open chemistry", _PW, "Chemistry"),
+    ("show me a hint", _CHESS, "Show Hint"),
+    ("play against a bot", _CHESS, "Play Bots"),
+    ("close this pop up", _CHESS, "No, thank you"),
+    ("take back that move", _CHESS, "Undo"),
+]
+
+
+def items_note(items: list[str]) -> str:
+    return "(Items on screen now, for click_element: " + "; ".join(f"[{i}] {x}" for i, x in enumerate(items, 1)) + ")"
+
+
+def score_element(calls, items: list[str], want: str) -> tuple[float, str]:
+    if not calls:
+        return 0.0, "no action"
+    name, a = calls[0]
+    if name != "click_element":
+        return 0.0, f"{name}({a})"
+    names = [x.split('"', 1)[1].rstrip('"') for x in items]
+    try:
+        if a.get("id") is not None:
+            got = names[int(a["id"]) - 1]
+        else:
+            got = str(a.get("name", ""))
+    except (IndexError, ValueError):
+        return 0.0, f"bad id {a}"
+    return float(got.lower() == want.lower()), f"click_element -> {got}"
+
+
 def request_for(skills, text: str) -> tuple[str, list[dict]]:
     """The system prompt and tools Jarvis would send for this request (v3: only what its kind needs)."""
-    kind = router.classify(text)
+    request = text.split("\n(Items on screen", 1)[0]
+    kind = "screen" if request != text else router.classify(text)  # Jarvis attaches items only to screen requests
     return build_prompt(kind, text, **FAKE_CONTEXT), tool_declarations(skills, kind, set(), text)
 
 
@@ -204,6 +256,8 @@ def run_model(spec: str, suites: list[str], gap: float, screens, skills, thinkin
         jobs += [("text", t, ok, None) for t, ok in TEXT_CASES]
     if "screen" in suites:
         jobs += [("screen", t, tg, sc) for sc, t, tg in eval_screens.cases()]
+    if "elements" in suites:
+        jobs += [("elements", f"{t}\n{items_note(items)}", (items, want), None) for t, items, want in ELEMENT_CASES]
     rows, fails = [], 0
     for suite, text, expect, screen in jobs:
         jpeg, truth = screens[screen] if screen else (None, None)
@@ -222,7 +276,9 @@ def run_model(spec: str, suites: list[str], gap: float, screens, skills, thinkin
                 break
             time.sleep(gap)
             continue
-        if suite == "text":
+        if suite == "elements":
+            score, detail = score_element(calls, *expect)
+        elif suite == "text":
             got = calls[0][0] if calls else TEXT
             score, detail = float(got in expect), (f"{got}({calls[0][1]})" if calls else said[:60])
         else:
@@ -248,14 +304,14 @@ def run_model(spec: str, suites: list[str], gap: float, screens, skills, thinkin
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", nargs="+", required=True, help="provider:model, e.g. groq:openai/gpt-oss-120b")
-    ap.add_argument("--suite", default="both", choices=["text", "screen", "both"])
+    ap.add_argument("--suite", default="both", choices=["text", "screen", "elements", "both", "all"])
     ap.add_argument("--thinking", help="Gemini 3 thinkingLevel (minimal/low/...)")
     ap.add_argument("--gap", type=float, default=3.0, help="seconds between requests (rate limits)")
     a = ap.parse_args()
 
     cfg = tomllib.load(open(ROOT / "config.toml", "rb"))
     skills = Skills(cfg, print)
-    suites = ["text", "screen"] if a.suite == "both" else [a.suite]
+    suites = {"both": ["text", "screen"], "all": ["text", "screen", "elements"]}.get(a.suite, [a.suite])
     screens = eval_screens.build_screens() if "screen" in suites else {}
     out = ROOT / "logs" / "ai_eval.jsonl"
     for spec in a.models:

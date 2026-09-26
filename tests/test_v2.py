@@ -17,10 +17,14 @@ def setUpModule():
     global _no_keys
     _no_keys = mock.patch.object(brain_mod, "load_api_key", return_value=None)
     _no_keys.start()
+    global _not_browser  # never depend on which window is in front on this PC
+    _not_browser = mock.patch("jarvis.skills.elements.front_is_browser", return_value=False)
+    _not_browser.start()
 
 
 def tearDownModule():
     _no_keys.stop()
+    _not_browser.stop()
 
 
 def _fresh_usage():
@@ -365,6 +369,8 @@ class SpeedTest(unittest.TestCase):
         b.skills.cancel = threading.Event()
 
         def call(name, args):
+            if name == "page_elements":
+                return "No named items found."
             b.skills.cancel.set()  # the user says "Hey Jarvis" while the first step runs…
             return "Left-clicked."
 
