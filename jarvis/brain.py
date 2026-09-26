@@ -34,7 +34,14 @@ You act only through the tools, like a person at the keyboard and mouse; the use
 - "Open YouTube" = the website (open_website, full URL) unless they say "app". "Search X on YouTube" =
   web_search with that site; if that site is already in front, site_search. "Here", "this tab", "address
   bar" = act on the current tab (address_bar / browser / site_search), not a new window.
-- "Third profile" = number 3 in the profile list below.
+- "Third profile" = number 3 in the profile list below. Nicknames (main, AI, backup…) are listed there.
+  If a profile request fits none or several, ask which one.
+- Recent or changing facts (latest film, current score, news, prices, "this year"): web_search, then read the
+  answer from the results on screen. Never answer those from memory; your knowledge may be out of date.
+- If a click didn't do what you wanted, don't click the same spot again: look again and aim somewhere else,
+  or use the keyboard (Tab to move between fields), or ask the user.
+- "Close this" right after you opened a window = close that window. Close a tab only if they say tab.
+  "Close both/all of them" = window with action close_all.
 - To click: look_at_screen, then click the centre of the item (x,y 0-1000). Skip the browser's tab/toolbar
   strip (top ~10%) unless asked. For "the second video": count page results top to bottom, skipping ads/Shorts.
 - Look again after a click only if the next step needs the new screen, or to confirm you opened the right
@@ -93,6 +100,9 @@ _FINISHING_TOOLS = {
     "show_in_explorer", "create_folder", "copy_file", "move_file", "rename_file", "write_text_file",
 }
 _MULTI_STEP = re.compile(r"\b(and|then|after that|also|once)\b|,")
+_LAUNCHING_TOOLS = {"open_app", "open_website", "open_chrome", "open_path", "web_search", "show_in_explorer"}
+_QUESTION = re.compile(r"\?\s*$|^\s*(what|who|when|where|which|why|how|is|are|was|were|did|does|do|can|tell me)\b",
+                       re.I)
 
 
 def fast_reply(request: str, calls: list[str], results: list, said: str = "") -> str | None:
@@ -105,6 +115,10 @@ def fast_reply(request: str, calls: list[str], results: list, said: str = "") ->
     if not calls or any(isinstance(r, dict) or _looks_failed(r) for r in results):
         return None
     if not all(c in _FINISHING_TOOLS for c in calls):
+        return None
+    if "web_search" in calls and _QUESTION.search(request):
+        # A question answered by searching must be read from the results, not from memory
+        # (it opened a search about Ranveer Singh, then answered with outdated facts).
         return None
     if speakable(said):  # the AI already wrote a proper reply alongside the actions
         return said
@@ -379,6 +393,7 @@ class Brain:
         unchecked_click = False  # clicked since the last look at the screen
         verified = False         # the "look before you claim" check runs at most once per request
         asked_again = False      # a garbled final answer gets one retry
+        launched = False         # an app or window was opened this request
 
         try:
             for _ in range(self.cfg.get("max_steps", 6)):
@@ -403,6 +418,8 @@ class Brain:
                         # so it can't say "Chemistry 2026 is open" when 2024 opened.
                         verified = True
                         log.info("Checking the screen before Jarvis reports a click result")
+                        if launched:
+                            time.sleep(1.5)  # an app/window just opened; let it appear before judging
                         shot = self.skills.call("look_at_screen", {})
                         turn.append({"role": "user", "parts": [
                             {"text": "Before replying, check this screenshot of the result. Say only what it "
@@ -423,10 +440,15 @@ class Brain:
                     log.info("Gemini answered in %.1fs", time.monotonic() - t0)
                     return said
                 for c in calls:
-                    if c["name"] == "click":
+                    # Clicking and typing both need checking: "name it Jarvis" was typed into the
+                    # search bar and reported as done.
+                    if c["name"] in ("click", "type_text", "press_key") or (
+                            c["name"] == "web_search" and _QUESTION.search(text)):
                         unchecked_click = True
                     elif c["name"] == "look_at_screen":
                         unchecked_click = False
+                    if c["name"] in _LAUNCHING_TOOLS:
+                        launched = True
 
                 parts, images, results = [], [], []
                 for call in calls:

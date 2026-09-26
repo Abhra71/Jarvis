@@ -95,9 +95,10 @@ class Skills:
             Tool("open_app", "Launch a desktop app.",
                  {"name": (S, "e.g. 'notepad', 'whatsapp'", True, None)},
                  lambda name: self.apps.open(name)),
-            Tool("window", "Focus/minimize/maximize/restore/close an open app window ('browser' = any browser).",
+            Tool("window", "Focus/minimize/maximize/restore/close an app window, or close_all of that app's windows "
+                           "('browser' = any browser).",
                  {"app": (S, "", True, None),
-                  "action": (S, "", True, ["focus", "minimize", "maximize", "restore", "close"])},
+                  "action": (S, "", True, ["focus", "minimize", "maximize", "restore", "close", "close_all"])},
                  lambda app, action: desktop.window_action(app, action)),
             Tool("look_at_screen", "Screenshot of the whole screen. Positions are x,y from 0 to 1000.", {},
                  lambda: {"text": "Screenshot attached. Give positions as x,y from 0 to 1000 of this image.",

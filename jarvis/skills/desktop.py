@@ -60,7 +60,7 @@ KEYS = {
     "enter": "{ENTER}", "escape": "{ESC}", "tab": "{TAB}", "space": " ", "backspace": "{BACKSPACE}",
     "up": "{UP}", "down": "{DOWN}", "left": "{LEFT}", "right": "{RIGHT}",
     "page_up": "{PGUP}", "page_down": "{PGDN}", "home": "{HOME}", "end": "{END}",
-    "f5": "{F5}", "f11": "{F11}", "select_all": "^a", "copy": "^c", "paste": "^v", "undo": "^z",
+    "f5": "{F5}", "f11": "{F11}", "select_all": "^a", "copy": "^c", "cut": "^x", "paste": "^v", "undo": "^z",
     "save": "^s", "find": "^f", "new_window": "^n", "close_window": "%{F4}", "switch_window": "%{TAB}",
     "show_desktop": "{VK_LWIN down}d{VK_LWIN up}",
 }
@@ -137,12 +137,20 @@ def _pretty(w) -> str:
 # ---- window actions ----------------------------------------------------------
 
 def window_action(app: str, action: str) -> str:
-    """action: focus, minimize, maximize, restore, close."""
+    """action: focus, minimize, maximize, restore, close, close_all (every window of that app)."""
     w = find_window(app)
     if not w:
         return f"I don't see {app} open."
     hwnd = w[0]
     name = _pretty(w)
+    if action == "close_all":
+        # "Close both of them": every top-level window of the same program, front-most first.
+        same = [x for x in _app_windows() if x[1] == w[1]] if w[1] else [w]
+        for x in same:
+            _focus(x[0])
+            win32gui.PostMessage(x[0], win32con.WM_CLOSE, 0, 0)
+            time.sleep(STEP_PAUSE)
+        return f"Closed {len(same)} {name} window{'s' if len(same) != 1 else ''}."
     if action == "close":
         _focus(hwnd)  # show it first so you see what's being closed
         # A normal close request: the app still asks "save changes?" if it needs to.

@@ -379,6 +379,27 @@ class SpeedTest(unittest.TestCase):
         # and never after a click, even with a nice sentence: clicks get checked on screen first
         self.assertIsNone(fast_reply("open the github shortcut", ["click"], ["Left-clicked."], "Opened GitHub."))
 
+    def test_search_questions_are_not_answered_from_memory(self):
+        from jarvis.brain import fast_reply
+
+        self.assertIsNone(fast_reply("what was Ranveer Singh's last film?", ["web_search"],
+                                     ["Searching google for Ranveer Singh last film."], "Rocky Aur Rani."))
+        self.assertIsNotNone(fast_reply("search lofi music on youtube", ["web_search"], ["Searching youtube for lofi."]))
+
+    def test_typing_is_checked_before_claiming(self):
+        b = self._brain({"model": "lite", "fallback_models": []})
+
+        def call(name, args):
+            return {"text": "Screenshot attached.", "image_jpeg": b"jpg"} if name == "look_at_screen" else "Typed it."
+
+        b.skills.call.side_effect = call
+        b.http = mock.Mock()
+        b.http.post.side_effect = [
+            _response([{"functionCall": {"name": "type_text", "args": {"text": "Jarvis"}}}]),
+            _response([{"text": "I've named the repository Jarvis."}]),                # claims without looking…
+            _response([{"text": "It went into the search bar, not the name field."}])]  # …after the look
+        self.assertEqual(b.ask("name it jarvis"), "It went into the search bar, not the name field.")
+
     def test_speakable(self):
         from jarvis.brain import speakable
 
