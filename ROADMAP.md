@@ -2,6 +2,21 @@
 
 Running list of agreed work, done one at a time. Evidence comes from `logs/usage-*.json` and `logs/jarvis.log`.
 
+## Goal (set by the user, 27 Sep)
+Within about a week, Jarvis should behave like a **proper everyday application** on the user's laptop, not a demo you play with for a few minutes. In order of importance:
+1. **Reliable:** works every time and never gets stuck.
+2. **Accurate:** never opens or clicks the wrong thing, and never does anything unasked.
+3. **Fast:** simple commands in about 1 s; the three main sites near-instant.
+4. **Smart use of AI:** the code does what it can; the AI is asked only for real judgement and gets exactly the context it needs.
+
+Measure against this goal after every change, with real voice sessions and the logs.
+
+**Later, not now:** a public GitHub release that anyone can install on their PC with terminal commands. Before that:
+- scrub the personal data from the files and the git history (the repo stays private until then);
+- add an installer / setup script;
+- add first-run setup for keys and Chrome profiles;
+- write docs.
+
 ## Done
 
 ### 1. Speed (26 Sep)
