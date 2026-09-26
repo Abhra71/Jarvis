@@ -40,6 +40,24 @@ Start here in a new chat: "continue the Jarvis v3 build". Read this file, [v3-pl
 - a voice test of the three sites;
 - rotating the Gemini key.
 
+**Live voice test 27 Sep 00:18–00:38 (68 requests; fix these first, before or alongside step 5):**
+- Results: 43 handled by Groq (median 1.1 s), 17 by Gemini (median 6.5 s, slowest 26 s), 6 by offline rules.
+  Click by name worked well (Maps directions, "Manage", "Trust", "Trust Folder & Continue").
+- **Secrets:** Jarvis ran `read_text_file` on `.env`, so the API keys went to the AI. Block `.env`, key and credential files in `files.read_text` / `find_files`.
+- **Groq rate limits:** 429 errors on 14 turns, then fell back to Gemini (slow).
+  - Groq counts `max_tokens` (1024) against the 8k/min limit up front: cut it to ~300.
+  - The item list adds ~700 tokens: cap it and skip it for plain commands.
+- **Groq 400 errors** ("failed to parse tool call JSON", tried to call a tool named `keys`, `window` args didn't match the schema) are treated as an outage. Retry once, telling the model what was wrong, before switching provider.
+- **Budget gaps:**
+  - "Select the lines 7, 8, and 9" was split at the commas, giving a budget of 7.
+  - Launches aren't counted: "Open notifications" opened Action Center twice.
+  - It typed its own question "What should I type?" into Claude's search bar.
+- **Offline-rule bug:** "…only Google and Groq AI services are used" matched `ai_status` (`nlu.py`: ai … used) and read out the status.
+- **Keys:** no combinations like Ctrl+Enter, and no general shortcuts. Add `press_keys("ctrl+enter")` with a safe list.
+- **Text editing** (VS Code `.env`) was weak: 26 s, several attempts, an error dialog. Use editor keys (Ctrl+G line, Shift+Down select) instead of drags.
+- **Hearing:** 17/68 marked unsure. Misheard: Physics Wallah → "Physics, Voila", Groq → "Brock"/"Grok", tab → "deck", Claude → "cloud". Add hint words; step 6 (Whisper on the GPU) matters.
+- "Close … Claude": the `window` tool couldn't find the Claude app window (4 tries).
+
 **Lessons for the next session:**
 - Don't put regexes or `\n` in bash heredoc Python scripts: backslashes got mangled (`\b` became a backspace). Use the Edit tool.
 - Python `write_text` on Windows writes CRLF: pass `newline="\n"`. The repo is LF.
