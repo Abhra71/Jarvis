@@ -1,0 +1,16 @@
+sounddevice
+numpy
+openwakeword==0.6.0
+webrtcvad-wheels
+faster-whisper
+rapidfuzz
+pycaw
+comtypes
+edge-tts
+miniaudio
+pystray
+Pillow
+httpx
+pywinauto
+pywin32
+psutil

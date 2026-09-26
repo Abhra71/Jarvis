@@ -1,0 +1,147 @@
+"""Groq as a backup brain, used when Gemini is busy or out of free quota.
+
+Groq speaks the OpenAI chat format, so this converts Jarvis's Gemini-style tool
+declarations and conversation into that format and runs the same tool loop.
+
+Groq's free tier limits tokens per minute *per model*, and each Jarvis request is
+~2k tokens, so we move down a list of models when one is rate-limited. Only some
+models can see images, so screenshots switch the turn to the vision model.
+"""
+
+import base64
+import json
+import logging
+import time
+
+import httpx
+
+from .usage import usage
+
+log = logging.getLogger(__name__)
+
+API = "https://api.groq.com/openai/v1"
+
+DEFAULT_MODELS = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]
+DEFAULT_VISION_MODEL = "qwen/qwen3.8-27b"
+
+
+def _schema(s, _in_properties=False):
+    """Gemini schema (type: 'STRING') -> JSON schema (type: 'string').
+
+    Per-parameter descriptions are dropped: Groq's free tier counts every token, and the
+    parameter names plus the tool's own description are enough for it.
+    """
+    if isinstance(s, dict):
+        out = {}
+        for k, v in s.items():
+            if k == "description" and _in_properties:
+                continue
+            if k == "type" and isinstance(v, str):
+                out[k] = v.lower()
+            elif k == "properties":
+                out[k] = {name: _schema(p, True) for name, p in v.items()}
+            else:
+                out[k] = _schema(v)
+        return out
+    if isinstance(s, list):
+        return [_schema(x) for x in s]
+    return s
+
+
+def _text(content: dict) -> str:
+    return " ".join(p["text"] for p in content.get("parts", []) if "text" in p and not p.get("thought")).strip()
+
+
+class GroqBackup:
+    def __init__(self, key: str, cfg: dict, http: httpx.Client):
+        self.key = key
+        self.models = cfg.get("groq_models", DEFAULT_MODELS)
+        self.vision_model = cfg.get("groq_vision_model", DEFAULT_VISION_MODEL)
+        self.http = http
+
+    def _complete(self, models: list[str], body: dict) -> dict:
+        """Try each model in turn until one isn't rate-limited, busy, or retired."""
+        last = ""
+        for model in models:
+            if len(models) > 1 and usage.is_limited(f"groq:{model}"):
+                continue  # hit its per-minute limit moments ago; don't waste a request
+            t0 = time.monotonic()
+            try:
+                r = self.http.post(f"{API}/chat/completions", headers={"Authorization": f"Bearer {self.key}"},
+                                   json={**body, "model": model})
+            except httpx.TimeoutException:
+                usage.api_call("groq", model, "timeout", time.monotonic() - t0)
+                last = f"{model} timed out"
+                continue
+            h = r.headers if isinstance(getattr(r, "headers", None), (dict, httpx.Headers)) else {}
+            limits = {k: h.get(f"x-ratelimit-{k}") for k in
+                      ("remaining-requests", "limit-requests", "remaining-tokens", "limit-tokens")}
+            u = r.json().get("usage", {}) if r.status_code == 200 else {}
+            retry_after = h.get("retry-after")
+            usage.api_call("groq", model, r.status_code, time.monotonic() - t0,
+                           u.get("prompt_tokens", 0), u.get("completion_tokens", 0),
+                           limits if any(limits.values()) else None,
+                           limited_for=int(float(retry_after)) + 1 if r.status_code == 429 and retry_after else None)
+            if r.status_code == 200:
+                if model != models[0]:
+                    log.info("Groq answered with %s", model)
+                return r.json()["choices"][0]["message"]
+            last = f"{model} {r.status_code}: {r.text[:150]}"
+            log.warning("Groq %s", last)
+            if r.status_code not in (404, 429, 500, 503):  # 404: model retired, try the next
+                break
+        raise RuntimeError(f"Groq failed ({last})")
+
+    def ask(self, system: str, history: list[dict], text: str, declarations: list[dict],
+            call_tool, max_steps: int = 6, finish=None) -> tuple[str, list[dict]]:
+        """finish(tool_names, results, said) -> reply to speak now, or None to ask the AI again."""
+        """Returns (reply, what to add to the shared history in Gemini format)."""
+        messages = [{"role": "system", "content": system}]
+        for c in history:  # earlier turns as plain text; tool details aren't needed
+            t = _text(c)
+            if t:
+                messages.append({"role": "assistant" if c["role"] == "model" else "user", "content": t})
+        messages.append({"role": "user", "content": text})
+        tools = [{"type": "function", "function": {
+            "name": d["name"], "description": d["description"],
+            "parameters": _schema(d.get("parameters", {"type": "OBJECT", "properties": {}}))}} for d in declarations]
+
+        models = self.models
+        t0 = time.monotonic()
+        for _ in range(max_steps):
+            msg = self._complete(models, {"messages": messages, "tools": tools, "temperature": 0.4, "max_tokens": 1024})
+            calls = msg.get("tool_calls") or []
+            messages.append({k: v for k, v in msg.items() if k in ("role", "content", "tool_calls") and v is not None})
+            if not calls:
+                reply = (msg.get("content") or "Done.").strip()
+                log.info("Groq answered in %.1fs", time.monotonic() - t0)
+                return reply, [{"role": "user", "parts": [{"text": text}]},
+                               {"role": "model", "parts": [{"text": reply}]}]
+
+            images, results = [], []
+            for call in calls:
+                try:
+                    args = json.loads(call["function"].get("arguments") or "{}")
+                except ValueError:
+                    args = {}
+                result = call_tool(call["function"]["name"], args)
+                if isinstance(result, dict):  # a screenshot
+                    images.append(result["image_jpeg"])
+                    result = result["text"]
+                results.append(result)
+                messages.append({"role": "tool", "tool_call_id": call["id"], "content": str(result)})
+            quick = None if images or not finish else finish(
+                [c["function"]["name"] for c in calls], results, (msg.get("content") or "").strip())
+            if quick:
+                log.info("Groq answered in %.1fs (fast finish)", time.monotonic() - t0)
+                return quick, [{"role": "user", "parts": [{"text": text}]}, {"role": "model", "parts": [{"text": quick}]}]
+            if images:
+                # Tool messages can't carry images in this format, so show it as a user message,
+                # and finish the turn on the model that can actually see.
+                content = [{"type": "text", "text": "Here is the screenshot you asked for."}]
+                content += [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(j).decode()}}
+                            for j in images]
+                messages.append({"role": "user", "content": content})
+                models = [self.vision_model]
+        return "That took too many steps, so I stopped.", [{"role": "user", "parts": [{"text": text}]},
+                                                           {"role": "model", "parts": [{"text": "(stopped)"}]}]

@@ -1,0 +1,70 @@
+# Jarvis v1 configuration. Restart Jarvis after editing.
+
+[audio]
+sample_rate = 16000          # openWakeWord and Whisper both expect 16 kHz mono
+input_device = ""            # "" = Windows default mic, or part of the device name (see: python -m jarvis --list-devices)
+
+[wakeword]
+model = "hey_jarvis"
+threshold = 0.5              # raise (e.g. 0.7) if it triggers by itself, lower if it misses you
+cooldown_seconds = 2.0
+
+[listen]
+max_seconds = 15.0           # hard cap on one command (it still stops as soon as you pause)
+silence_seconds = 0.8        # stop recording after this much silence once you've started talking
+no_speech_timeout = 4.0      # give up if you say nothing after the wake word
+vad_aggressiveness = 2       # 0-3, higher = more strict about what counts as speech
+followup_seconds = 5         # after answering, keep listening this long without "Hey Jarvis" (0 = off)
+
+[ai]
+# Google's always-current models. Lite answered in ~1.5s vs 4-20s for full Flash (which "thinks" first)
+# and has a bigger free allowance; full Flash is the backup when Lite is busy or rate-limited.
+# 26 Sep accuracy test (16 typical requests): 3.1 Flash Lite 16/16 and never hung; flash-lite-latest 15/16
+# (hung on ~half of requests under load); Groq gpt-oss-120b 14/16 (asked instead of acting); Groq qwen
+# rate-limited on 7/16.
+model = "gemini-3.1-flash-lite"
+fallback_models = ["gemini-flash-lite-latest", "gemini-flash-latest"]
+# Backup when Gemini is busy/out of quota (needs GROQ_API_KEY in .env). Groq's free limit is per model
+# (~3-4 Jarvis requests/minute each), so it moves down this list when one is rate-limited.
+groq_models = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]
+groq_vision_model = "qwen/qwen3.8-27b"   # the one that can read screenshots
+max_steps = 14               # max AI round-trips per request (look -> click -> look ... needs several)
+history_minutes = 5          # forget the conversation after this much silence
+history_turns = 10
+timeout_seconds = 10         # per AI request (normal is ~2s, ~4s with a screenshot); then the next model/Groq takes over
+slow_backoff_seconds = 180   # after Gemini stalls, ask Groq first for this long, then give Gemini another chance
+# The newest Lite models often hang (4-6 of 8 requests in a test). If the main model hasn't answered after
+# hedge_after_seconds, the request also goes to hedge_model (older, never hung) and the first answer wins.
+hedge_after_seconds = 2.5
+hedge_model = "gemini-flash-lite-latest"
+
+[stt]
+model = "base.en"            # tiny.en (fastest) / base.en / small.en (most accurate, slower)
+compute_type = "int8"
+
+[tts]
+engine = "edge"              # "edge" (natural, needs internet) / "offline" (pyttsx3) / "beep"
+voice = "en-GB-RyanNeural"   # try en-US-GuyNeural, en-IN-PrabhatNeural, en-US-AriaNeural
+rate = "+5%"
+wake_reply = "Yes, my lord?"  # said when it hears "Hey Jarvis" ("" = soft chime instead). Stopping always plays a soft chime.
+
+[volume]
+step = 10                    # percent for "volume up" / "volume down"
+
+# Spoken name -> what to launch. Anything not listed here is looked up
+# in your Start Menu automatically, so "open spotify" works without an entry.
+[apps]
+notepad = "notepad.exe"
+calculator = "calc.exe"
+chrome = "chrome"
+edge = "msedge"
+browser = "msedge"
+"file explorer" = "explorer.exe"
+explorer = "explorer.exe"
+"command prompt" = "cmd.exe"
+terminal = "wt.exe"
+"task manager" = "taskmgr.exe"
+settings = "ms-settings:"
+paint = "mspaint.exe"
+"vs code" = "code"
+"visual studio code" = "code"
