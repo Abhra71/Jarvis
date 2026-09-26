@@ -40,7 +40,9 @@ Start here in a new chat: "continue the Jarvis v3 build". Read this file, [v3-pl
 - a voice test of the three sites;
 - rotating the Gemini key.
 
-**Live voice test 27 Sep 00:18–00:38 (68 requests; fix these first, before or alongside step 5):**
+**Order the user chose for the next session:** site packs first (YouTube, chess, PW), then the fixes below. Exception, recommended to the user: the `.env` secrets block is a 5-minute fix and should go in right away.
+
+**Live voice test 27 Sep 00:18–00:38 (68 requests; fix after the site packs):**
 - Results: 43 handled by Groq (median 1.1 s), 17 by Gemini (median 6.5 s, slowest 26 s), 6 by offline rules.
   Click by name worked well (Maps directions, "Manage", "Trust", "Trust Folder & Continue").
 - **Secrets:** Jarvis ran `read_text_file` on `.env`, so the API keys went to the AI. Block `.env`, key and credential files in `files.read_text` / `find_files`.
