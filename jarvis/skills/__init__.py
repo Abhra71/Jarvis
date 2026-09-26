@@ -6,6 +6,7 @@ Every tool returns a short sentence describing what happened.
 """
 
 import logging
+import re
 import threading
 from dataclasses import dataclass
 from typing import Callable
@@ -43,6 +44,32 @@ class Tool:
 
 S, I, B = "STRING", "INTEGER", "BOOLEAN"
 
+# Hard safety check in code (not just an instruction to the AI): these need the user's spoken "yes".
+_RISKY_CLICK = re.compile(
+    r"\b(send|post|publish|tweet|buy|purchase|pay|payment|checkout|check out|place order|order now|subscribe|"
+    r"delete|remove|trash|sign in|log in|login|submit|transfer|confirm|donate|install)\b", re.I)
+_CHAT_APPS = ("whatsapp", "telegram", "discord", "slack", "messenger", "instagram", "gmail", "outlook", "teams",
+              "signal", "mail")
+
+
+def needs_confirmation(name: str, args: dict, front_window) -> str | None:
+    """If this action is the kind that can't be taken back, describe it; else None."""
+    if name == "click":
+        target = str(args.get("target", ""))
+        if _RISKY_CLICK.search(target):
+            return f"click '{target}'"
+        return None
+    sends_enter = (name == "type_text" and args.get("press_enter")) or (
+        name == "press_key" and str(args.get("key", "")).lower() == "enter")
+    if sends_enter:
+        try:
+            front = front_window().lower()
+        except Exception:
+            front = ""
+        if any(app in front for app in _CHAT_APPS):
+            return "press Enter in a chat or mail window, which sends the message"
+    return None
+
 
 class Skills:
     def __init__(self, config: dict, announce: Callable[[str], None]):
@@ -52,6 +79,7 @@ class Skills:
         self.timers = Timers(announce)
         self.calls_made = 0  # lets the assistant tell whether the AI already did something this turn
         self.cancel = threading.Event()  # set when the user says "Hey Jarvis" mid-task: stop at the next step
+        self.confirmed = False  # the user just said "yes" to Jarvis's question: risky actions allowed this turn
         self.on_tool: Callable[[str], None] = lambda name: None  # the assistant uses this to update the tray icon
         step = config["volume"]["step"]
 
@@ -71,8 +99,9 @@ class Skills:
                           "image_jpeg": desktop.screenshot_jpeg()}),
             Tool("click", "Move the real mouse to x,y (0-1000, from a screenshot) and click.",
                  {"x": (I, "", True, None), "y": (I, "", True, None),
+                  "target": (S, "what you're clicking, e.g. 'second video title', 'Send button'", True, None),
                   "button": (S, "", False, ["left", "right"]), "double": (B, "", False, None)},
-                 lambda x, y, button="left", double=False: mouse.click(x, y, button, bool(double))),
+                 lambda x, y, target="", button="left", double=False: mouse.click(x, y, button, bool(double))),
             Tool("scroll", "Mouse-wheel scroll at x,y (default middle of screen).",
                  {"direction": (S, "", True, ["up", "down"]), "amount": (I, "notches, default 3", False, None),
                   "x": (I, "", False, None), "y": (I, "", False, None)},
@@ -170,6 +199,11 @@ class Skills:
             return f"Unknown tool {name}."
         if self.cancel.is_set():
             raise mouse.Cancelled()
+        risk = needs_confirmation(name, args or {}, desktop.front_window)
+        if risk and not self.confirmed:
+            log.info("Blocked %s(%s): %s, needs the user's yes", name, args, risk)
+            return (f"Needs confirmation: this would {risk}. Nothing was done. Ask the user one short yes/no "
+                    f"question, and do it only after they say yes.")
         log.info("Tool %s(%s)", name, args)
         self.calls_made += 1
         # The browser's scroll actions use the mouse too, so show them as mouse use.

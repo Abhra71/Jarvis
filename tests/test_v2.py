@@ -389,6 +389,52 @@ class SpeedTest(unittest.TestCase):
         self.assertEqual(_limit_seconds(mock.Mock(json=lambda: {})), 60)
 
 
+class ConfirmationTest(unittest.TestCase):
+    def test_what_counts_as_risky(self):
+        from jarvis.skills import needs_confirmation
+
+        front = lambda: "chrome: YouTube - Google Chrome"
+        self.assertIsNotNone(needs_confirmation("click", {"target": "Send button"}, front))
+        self.assertIsNotNone(needs_confirmation("click", {"target": "Place order"}, front))
+        self.assertIsNotNone(needs_confirmation("click", {"target": "Subscribe"}, front))
+        self.assertIsNone(needs_confirmation("click", {"target": "second video title"}, front))
+        self.assertIsNone(needs_confirmation("type_text", {"text": "lofi", "press_enter": True}, front))
+        chat = lambda: "whatsapp: WhatsApp"
+        self.assertIsNotNone(needs_confirmation("type_text", {"text": "hi", "press_enter": True}, chat))
+        self.assertIsNotNone(needs_confirmation("press_key", {"key": "enter"}, chat))
+        self.assertIsNone(needs_confirmation("type_text", {"text": "hi"}, chat))  # typing without sending is fine
+
+    def test_blocked_until_the_user_says_yes_to_a_question(self):
+        from jarvis.skills import Skills
+
+        with mock.patch("jarvis.skills.AppLauncher"), mock.patch("jarvis.skills.Browser"):
+            s = Skills({"volume": {"step": 10}, "apps": {}}, announce=print)
+        with mock.patch("jarvis.skills.mouse.click", return_value="Clicked.") as click:
+            blocked = s.call("click", {"x": 1, "y": 1, "target": "Send button"})
+            self.assertTrue(blocked.startswith("Needs confirmation"))
+            click.assert_not_called()
+            s.confirmed = True
+            self.assertEqual(s.call("click", {"x": 1, "y": 1, "target": "Send button"}), "Clicked.")
+
+    def test_yes_only_counts_after_a_question(self):
+        from jarvis import brain
+
+        with mock.patch.object(brain, "load_api_key", side_effect=lambda name="GEMINI_API_KEY": "k" if name == "GEMINI_API_KEY" else None):
+            b = brain.Brain({"model": "m", "fallback_models": []}, _fake_skills())
+        seen = {}
+        b._ask_any = lambda text: seen.setdefault(text, b.skills.confirmed) and "ok" or "ok"
+        b.history = [{"role": "user", "parts": [{"text": "send hi to mom"}]},
+                     {"role": "model", "parts": [{"text": "Should I send it?"}]}]
+        import time as t
+        b.last_turn = t.monotonic()  # the question was just asked (older memory is forgotten after 5 min)
+        b.ask("yes")
+        self.assertTrue(seen["yes"])
+        b.history.append({"role": "model", "parts": [{"text": "Done."}]})
+        b.ask("yes send it")
+        self.assertFalse(seen["yes send it"])  # Jarvis didn't just ask anything
+        self.assertFalse(b.skills.confirmed)  # and it never stays switched on
+
+
 class RoutingTest(unittest.TestCase):
     """Which requests stay offline (instant) and which go to Gemini."""
 

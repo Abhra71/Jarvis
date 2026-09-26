@@ -63,7 +63,14 @@ def load_api_key(name: str = "GEMINI_API_KEY") -> str | None:
     return key or None
 
 
-_FAILURE_STARTS = ("error", "not allowed", "unknown", "no ", "i couldn't", "i don't", "sorry", "i can only")
+_FAILURE_STARTS = ("error", "not allowed", "unknown", "no ", "i couldn't", "i don't", "sorry", "i can only",
+                   "needs confirmation")
+_YES = re.compile(r"^\s*(yes|yeah|yep|yup|sure|ok|okay|go ahead|do it|confirm|confirmed|please do|"
+                  r"send it|buy it|post it|delete it|haan|ha)\b", re.I)
+
+
+def _is_yes(text: str) -> bool:
+    return bool(_YES.search(text or ""))
 _FAILURE_WORDS = ("doesn't exist", "isn't a", "couldn't find", "won't overwrite", "already exists", "don't see",
                   "may not have worked")
 
@@ -272,6 +279,9 @@ class Brain:
             raise BrainUnavailable("no API key")
         self._trim_history()
         mouse.reset_takeover()
+        # A risky action (send, buy, delete…) is only allowed when this message is a "yes" to the
+        # question Jarvis just asked. Decided here in code, not left to the AI.
+        self.skills.confirmed = _is_yes(text) and self._just_asked()
         try:
             return self._ask_any(text)
         except mouse.UserTookOver:
@@ -280,6 +290,17 @@ class Brain:
         except mouse.Cancelled:
             log.info("User said Hey Jarvis mid-task; stopped")
             return "Stopped."
+        finally:
+            self.skills.confirmed = False
+
+    def _just_asked(self) -> bool:
+        """Did Jarvis's last reply end with a question?"""
+        for c in reversed(self.history):
+            if c["role"] == "model":
+                t = " ".join(p.get("text", "") for p in c.get("parts", []) if not p.get("thought")).strip()
+                if t:
+                    return t.endswith("?")
+        return False
 
     def _ask_any(self, text: str) -> str:
         # While Gemini is stalling, go to Groq first (~0.7s) instead of waiting on Gemini every time.
