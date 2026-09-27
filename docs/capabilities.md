@@ -15,7 +15,7 @@ Updated 27 Sep 2026 (after Jarvis 4 phase 1).
 | Wake word | "Hey Jarvis" | works | 0 AI |
 | Follow-up without the wake word | answer within 5 s | works | 0 AI |
 | Stop mid-task | "Hey Jarvis" while it works | works | 0 AI |
-| Understanding speech | anything | weak: ~1 in 4 misheard (Whisper base on the CPU) | 0 AI |
+| Understanding speech | anything | works (not yet checked live): small.en on the GPU during conversations, 4.9% word errors on test clips (was 15.7%), 0.25 s | 0 AI |
 | Dictation mode | "start dictation … new line … stop dictation" | missing | 0 AI |
 
 ## 2. Windows and the desktop
@@ -132,8 +132,8 @@ Updated 27 Sep 2026 (after Jarvis 4 phase 1).
 
 ## Score
 73 abilities:
-- **40 work (55%)**;
-- 8 weak (11%);
+- **41 work (56%)**;
+- 7 weak (10%);
 - 22 missing (30%);
 - 3 off-limits by design.
 

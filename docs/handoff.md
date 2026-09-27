@@ -18,6 +18,12 @@ The goal is now **run the whole PC by voice**, with AI as a luxury. The v3 notes
   - `tools/smoke.py` (read-only live checks), not built yet.
   - Phase 2: hearing on the GPU. ctranslate2 sees the RTX 2050; faster-whisper `small.en` needs the cuBLAS/cuDNN wheels; measure VRAM and latency; dictation mode.
   - Then Phase 3: Bluetooth, Wi-Fi, brightness, night light as abilities in `jarvis/abilities/system.py`.
+**Phase 2a done (28 Sep):** GPU hearing on demand.
+- `jarvis/stt_worker.py`: a subprocess that starts on the wake word and exits after 120 s idle; the GPU is at 0 MB while Jarvis waits (user rule, see memory).
+- The NVIDIA wheels are in `.venv`; `stt_worker` preloads their DLLs by full path.
+- `tools/stt_eval.py` measures hearing.
+- **Next:** Phase 2b dictation mode, then Phase 3 system abilities.
+
 - **Adding an ability:** a function plus `@ability(name, summary, *phrase_regexes, value=hint)` in an area module under `jarvis/abilities/`, imported at the bottom of `jarvis/abilities/__init__.py`. Keep the value hints short: they go with every AI request.
 
 ## Progress (updated 27 Sep, end of session 1)
