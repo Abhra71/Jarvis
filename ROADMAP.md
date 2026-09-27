@@ -19,6 +19,16 @@ Measure against this goal after every change, with real voice sessions and the l
 
 Results are checked by re-reading the text or the window title, not with a screenshot, where possible.
 
+**Next, before chess (user's order, 27 Sep): human-like keyboard and cursor control.**
+- Any key combination via a `press_keys` tool (e.g. "ctrl+enter"), with a safety list: Shift+Delete, Alt+F4 on unknown windows and similar need a yes or are blocked.
+- A shortcut cheat-sheet per app (Chrome/Brave, Windows, Explorer, VS Code, Office, YouTube), sent only for the app in front.
+- Rule: use a shortcut whenever one exists; the mouse is the last resort.
+- Common jobs by shortcut in code (tabs, address bar, find, copy/paste/undo, select all, save, go to line).
+- Long text is pasted (and the clipboard restored) instead of typed.
+- Faster visible cursor: glide ~0.1 s instead of 0.35 s. Taking the mouse back still stops Jarvis.
+
+Then: chess → PW → the fixes from the voice test → the agent-feel phase.
+
 **Planned after the site packs: the "agent feel" phase (~2–3 h).** The user wants Jarvis to feel like a human helper, not "look around, then act":
 - Constant awareness: a background text view of the front window, refreshed when the window or page changes.
 - Plan, then act: the AI returns several steps at once; code runs them with text checks and asks the AI again only when something is unexpected.
