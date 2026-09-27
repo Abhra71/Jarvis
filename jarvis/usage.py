@@ -127,6 +127,7 @@ class Usage:
                 m["other_errors"] += 1
             if limits:
                 m["limits"] = limits
+                m["limits_at"] = time.time()
             if self.current_turn is not None:
                 self.current_turn["models"].append(f"{model} → {status}")
             self._save()
@@ -153,6 +154,19 @@ class Usage:
 
     def is_limited(self, key: str) -> bool:
         return self.models.get(key, {}).get("limited_until", 0) > time.time()
+
+    def tokens_left(self, key: str) -> float | None:
+        """Estimated tokens this model can take right now under its per-minute limit, from the last
+        rate-limit headers plus what has refilled since (the allowance refills evenly over a minute).
+        None if the provider hasn't told us its limits yet."""
+        m = self.models.get(key, {})
+        limits, at = m.get("limits") or {}, m.get("limits_at")
+        try:
+            remaining, limit = float(limits["remaining-tokens"]), float(limits["limit-tokens"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        refilled = (time.time() - at) * limit / 60 if at else limit
+        return min(limit, remaining + refilled)
 
     def model_state(self, m: dict) -> str:
         left = m.get("limited_until", 0) - time.time()

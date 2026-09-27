@@ -148,7 +148,9 @@ def parse(raw: str) -> Intent | None:
         return Intent("open_dashboard")
     # Only short questions about Jarvis's own AI: on 27 Sep "…only Google and Groq AI services are used"
     # (an instruction for a file) matched and read the status out instead.
-    if len(text.split()) <= 8 and (
+    # …and not commands that mention it: "close the Jarvis AI status page" (27 Sep) is about a window.
+    if len(text.split()) <= 8 and not re.match(r"(close|open|minimi[sz]e|maximi[sz]e|switch|go|show me the|hide)\b",
+                                                text) and (
             re.search(r"\b(ai|model|models)\b.*\b(status|usage|using|used|left|limit|limits)\b", text)
             or re.search(r"\bwhich (ai|model)\b", text)) or text in ("status", "ai status", "jarvis status"):
         return Intent("ai_status")

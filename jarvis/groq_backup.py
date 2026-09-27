@@ -77,6 +77,11 @@ class GroqBackup:
         last = ""
         # A malformed tool call (400 "tool_use_failed" / "tool call validation failed") is the model's slip,
         # not an outage: ask the same model once more, then the next one (27 Sep: 3 turns fell to slow Gemini).
+        # Share the load: each model has its own 8k tokens/minute, so ask the one with the most left
+        # instead of draining the first (27 Sep: both hit 429 in one Bluetooth task, then a 60 s Gemini wait).
+        if len(models) > 1:
+            left = {m: usage.tokens_left(f"groq:{m}") for m in models}
+            models = sorted(models, key=lambda m: -(left[m] if left[m] is not None else 1e9))
         queue = [(m, 0) for m in models]
         while queue:
             model, tries = queue.pop(0)

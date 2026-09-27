@@ -214,3 +214,23 @@ class VoiceTestFixesTest(unittest.TestCase):
         g = GroqBackup("k", {"groq_models": ["fast"]}, http)
         self.assertEqual(g._complete(["fast"], {})["content"], "Hi.")
         self.assertEqual(http.post.call_args.kwargs["json"]["model"], "fast")  # same model, once more
+
+
+class Night27FixesTest(unittest.TestCase):
+    def test_closing_the_status_page_is_not_a_status_question(self):
+        from jarvis import nlu
+        intent = nlu.parse("Close the Jarvis AI status and setting steps.")
+        self.assertFalse(intent and intent.name == "ai_status")
+        self.assertEqual(nlu.parse("what's the AI status").name, "ai_status")
+
+    def test_groq_load_is_shared_between_models(self):
+        from jarvis.groq_backup import GroqBackup
+        from jarvis.usage import usage
+        usage.api_call("groq", "big", 200, 0.5, limits={"remaining-tokens": "300", "limit-tokens": "8000"})
+        usage.api_call("groq", "small", 200, 0.5, limits={"remaining-tokens": "7000", "limit-tokens": "8000"})
+        http = mock.Mock()
+        http.post.return_value = mock.Mock(status_code=200, headers={},
+                                           json=lambda: {"choices": [{"message": {"content": "ok"}}]})
+        GroqBackup("k", {"groq_models": ["big", "small"]}, http)._complete(["big", "small"], {})
+        self.assertEqual(http.post.call_args.kwargs["json"]["model"], "small")  # the one with room left
+        self.assertAlmostEqual(usage.tokens_left("groq:big"), 300, delta=50)
