@@ -11,6 +11,22 @@ Within about a week, Jarvis should behave like a **proper everyday application**
 
 Measure against this goal after every change, with real voice sessions and the logs.
 
+**How Jarvis sees (agreed 27 Sep).** It tries these in order and uses the first that works:
+1. Site pack code (0 AI).
+2. The screen as text via UI Automation (0.05 s read, Groq text).
+3. Reading pixels on the PC: the chess board finder, Windows OCR (no AI; measure first).
+4. A cropped screenshot to Gemini, only when the request is about what something looks like, or 1–3 found nothing.
+
+Results are checked by re-reading the text or the window title, not with a screenshot, where possible.
+
+**Planned after the site packs: the "agent feel" phase (~2–3 h).** The user wants Jarvis to feel like a human helper, not "look around, then act":
+- Constant awareness: a background text view of the front window, refreshed when the window or page changes.
+- Plan, then act: the AI returns several steps at once; code runs them with text checks and asks the AI again only when something is unexpected.
+- Speak while acting ("Opening YouTube…").
+- Recover once from a click that changed nothing, then ask.
+- Use context (the screen, the last request) before asking "what do you mean?".
+- Then: better hearing (Whisper on the GPU, the user's vocabulary) and remembered preferences.
+
 **Later, not now:** a public GitHub release that anyone can install on their PC with terminal commands. Before that:
 - scrub the personal data from the files and the git history (the repo stays private until then);
 - add an installer / setup script;
