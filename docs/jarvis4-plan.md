@@ -169,3 +169,28 @@ Jarvis 4 is finished only when all of these hold, measured on real voice session
 | **Coverage** | ≥ 90% of `docs/capabilities.md` works (live-checked). |
 | **Frugal** | ≥ 80% of requests use no AI. The free tiers are never exhausted in a normal day. Backup switches are announced. |
 | **Quality** | Every ability has unit tests plus a read-only live check (`tools/smoke.py`). Errors are logged with a cause. No personal data in the repo before any public release. |
+
+## Re-ordered 28 Sep (the user's decision after "the core problem isn't being hit")
+Diagnosis: Jarvis is a one-shot command runner, not an agent. It has no goal, no plan, no checking of each step, no recovery and no context.
+
+Estimated honestly:
+- abilities ~55%;
+- agent behaviour ~20%;
+- the dream overall ~40%.
+
+New order:
+1. **Agent core:**
+   - understand the goal with context (words, front window, screen text, recent history);
+   - plan all the steps at once (0 or 1 AI call);
+   - run each step in code and verify it by reading the screen as text;
+   - recover once from what actually happened, then ask;
+   - talk while working;
+   - remember context ("it", "the same one").
+   Measured by a suite of real multi-step tasks.
+2. **Remaining abilities** (Phases 2b–6 above: dictation, system, apps/messaging/uploads, voice coding, game on/off).
+3. **Better logging:** per-request records + unhappiness signals + a one-command summary. Then the user's 2–3 day trial and a log review.
+4. **Self-healing:**
+   - learning from corrections, visible names, per-app notes and a daily self-review;
+   - auto-apply only vocabulary, phrases and notes; code changes are reviewed;
+   - "forget that" undoes it.
+5. **Chess** last.
