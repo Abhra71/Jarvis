@@ -7,7 +7,7 @@ What "run the whole PC by voice" means, and how much of it works. **This is the 
 - **missing**: can't do it yet
 - **AI**: needs the AI (a luxury, used sparingly) · **0 AI**: done in code
 
-Updated 27 Sep 2026 (start of Jarvis 4).
+Updated 27 Sep 2026 (after Jarvis 4 phase 1).
 
 ## 1. Speaking to Jarvis
 | Ability | Example | Status | AI |
@@ -25,8 +25,8 @@ Updated 27 Sep 2026 (start of Jarvis 4).
 | Switch / focus an app | "switch to Chrome", "switch window" | works | 0 AI / AI |
 | Minimize / maximize / restore / close | "maximize Brave" | works | AI (~1 s) |
 | Show desktop, minimize all | "show desktop" | works | 0 AI |
-| Snap left/right, move to other screen | "snap this left" | missing (keys exist; no ability yet) | — |
-| Virtual desktops | "new desktop", "next desktop" | missing | — |
+| Snap left/right, move to other screen | "snap this left" | works (not yet checked live) | 0 AI |
+| Virtual desktops | "new desktop", "next desktop" | works (not yet checked live) | 0 AI |
 | Close a specific app | "close Claude" | weak (didn't find the Claude window) | AI |
 | Screenshot / snip | "take a screenshot" | works | 0 AI |
 | Clipboard history | "clipboard history" | works | 0 AI |
@@ -43,7 +43,7 @@ Updated 27 Sep 2026 (start of Jarvis 4).
 | Airplane mode | "airplane mode on" | missing | — |
 | Display / projector mode | "duplicate screen" | missing | — |
 | Power plan, battery | "how much battery?" | missing | — |
-| Open any Settings page | "open Bluetooth settings" | weak (AI guesses) | AI |
+| Open any Settings page | "open Bluetooth settings" | works (not yet checked live) | 0 AI |
 | Timers | "timer 10 minutes" | works | 0 AI |
 | Time | "what's the time" | works | 0 AI |
 
@@ -126,15 +126,15 @@ Updated 27 Sep 2026 (start of Jarvis 4).
 | Plans several steps at once | missing (one AI round per step) |
 | Says what it's doing while doing it | missing |
 | Fixes its own small mistakes | missing |
-| Remembers new phrasings (no AI next time) | missing |
-| Announces backup AI / out of AI | missing |
+| Remembers new phrasings (no AI next time) | works |
+| Announces backup AI / out of AI | works |
 | Never does unasked things | works (action budget); small gaps |
 
 ## Score
 73 abilities:
-- **35 work (48%)**;
-- 9 weak (12%);
-- 26 missing (36%);
+- **40 work (55%)**;
+- 8 weak (11%);
+- 22 missing (30%);
 - 3 off-limits by design.
 
 Goal: 90%+ work.
