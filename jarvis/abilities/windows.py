@@ -1,0 +1,108 @@
+"""Windows, virtual desktops and Settings pages: all instant, all by Windows' own shortcuts or URIs."""
+
+import os
+
+from . import ability
+from ..skills import keys
+
+_THIS = r"(?:(?:this|the|current|my) )?(?:window|app|screen)?"
+
+
+def _press(combo: str, reply: str) -> str:
+    keys.press(combo)
+    return reply
+
+
+@ability("snap_left", "snap the front window to the left half",
+         rf"snap {_THIS}\s*(?:to (?:the )?)?left", r"move (?:this|the) window (?:to the )?left( half)?")
+def snap_left():
+    return _press("win+left", "Snapped left.")
+
+
+@ability("snap_right", "snap the front window to the right half",
+         rf"snap {_THIS}\s*(?:to (?:the )?)?right", r"move (?:this|the) window (?:to the )?right( half)?")
+def snap_right():
+    return _press("win+right", "Snapped right.")
+
+
+@ability("maximize_front", "maximize the front window",
+         r"maximi[sz]e(?: (?:this|it|the window|this window|the screen|screen))?", r"make (?:it|this) (?:full|bigger)")
+def maximize_front():
+    return _press("win+up", "Maximised.")
+
+
+@ability("minimize_front", "minimize the front window",
+         r"minimi[sz]e(?: (?:this|it|the window|this window))?", r"hide (?:this|it)")
+def minimize_front():
+    return _press("win+down win+down", "Minimised.")
+
+
+@ability("other_screen", "move the front window to the other monitor",
+         r"move (?:this|it|the window|this window) to (?:the )?(?:other|second|next) (?:screen|monitor|display)",
+         r"(?:send|throw) (?:this|it) to (?:the )?other (?:screen|monitor)")
+def other_screen():
+    return _press("win+shift+right", "Moved it to the other screen.")
+
+
+@ability("task_view", "show all open windows (task view)",
+         r"(?:show|open) (?:all )?(?:my )?(?:open )?windows", r"task view", r"show everything")
+def task_view():
+    return _press("win+tab", "Here are your windows.")
+
+
+@ability("new_desktop", "create a new virtual desktop",
+         r"(?:new|create a|make a|add a) (?:virtual )?desktop")
+def new_desktop():
+    return _press("win+ctrl+d", "New desktop.")
+
+
+@ability("next_desktop", "switch to the next virtual desktop",
+         r"(?:next|right) desktop", r"(?:switch|go) to (?:the )?next desktop")
+def next_desktop():
+    return _press("win+ctrl+right", "Next desktop.")
+
+
+@ability("previous_desktop", "switch to the previous virtual desktop",
+         r"(?:previous|left|last) desktop", r"(?:switch|go) (?:back )?to (?:the )?previous desktop")
+def previous_desktop():
+    return _press("win+ctrl+left", "Previous desktop.")
+
+
+@ability("close_desktop", "close the current virtual desktop (its windows move to the next one)",
+         r"close (?:this |the )?(?:virtual )?desktop")
+def close_desktop():
+    return _press("win+ctrl+f4", "Closed this desktop.")
+
+
+# Settings pages, opened directly (no clicking through menus).
+SETTINGS = {
+    "bluetooth": "bluetooth", "devices": "bluetooth", "wi fi": "network-wifi", "wifi": "network-wifi",
+    "network": "network", "internet": "network", "display": "display", "screen": "display",
+    "brightness": "display", "night light": "nightlight", "sound": "sound", "audio": "sound",
+    "volume": "apps-volume", "notifications": "notifications", "focus": "focus", "battery": "batterysaver",
+    "power": "powersleep", "storage": "storagesense", "apps": "appsfeatures", "default apps": "defaultapps",
+    "startup": "startupapps", "personalization": "personalization", "background": "personalization-background",
+    "wallpaper": "personalization-background", "colors": "colors", "dark mode": "colors",
+    "themes": "themes", "lock screen": "lockscreen", "taskbar": "taskbar", "mouse": "mousetouchpad",
+    "touchpad": "devices-touchpad", "keyboard": "keyboard", "typing": "typing", "language": "regionlanguage",
+    "time": "dateandtime", "date": "dateandtime", "privacy": "privacy", "microphone": "privacy-microphone",
+    "camera": "privacy-webcam", "updates": "windowsupdate", "windows update": "windowsupdate",
+    "accounts": "yourinfo", "vpn": "network-vpn", "hotspot": "network-mobilehotspot", "airplane mode":
+    "network-airplanemode", "printers": "printers", "clipboard": "clipboard", "about": "about",
+    "multitasking": "multitasking", "projection": "project", "accessibility": "easeofaccess",
+}
+
+
+@ability("open_settings", "open a Windows Settings page",
+         r"(?:open|show|go to) (?:the |my )?(?P<value>.+?) settings",
+         r"(?:open|show) settings for (?P<value>.+)",
+         r"(?:open |show )?(?:windows )?settings",
+         value="settings page, e.g. bluetooth, wifi, display, sound")
+def open_settings(value: str | None = None):
+    page = (value or "").strip().lower()
+    if page and page not in SETTINGS:
+        page = next((k for k in SETTINGS if k in page or page in k), "")
+        if not page:
+            raise ValueError(f"no Settings page called {value!r}")
+    os.startfile(f"ms-settings:{SETTINGS[page]}" if page else "ms-settings:")
+    return f"Opened {page} settings." if page else "Opened Settings."

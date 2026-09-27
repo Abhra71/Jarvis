@@ -23,12 +23,16 @@ def setUpModule():
     global _no_sites  # the site packs act on the real front window; their own tests fake it
     _no_sites = mock.patch("jarvis.skills.sites.handle", return_value=None)
     _no_sites.start()
+    global _no_abilities  # same for abilities (they press real keys); their own tests fake the keys
+    _no_abilities = mock.patch("jarvis.abilities.handle", return_value=None)
+    _no_abilities.start()
 
 
 def tearDownModule():
     _no_keys.stop()
     _not_browser.stop()
     _no_sites.stop()
+    _no_abilities.stop()
 
 
 def _fresh_usage():

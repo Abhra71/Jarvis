@@ -49,7 +49,7 @@ def classify(text: str) -> str:
 
 # Tool groups. `more_tools` can add any group mid-request.
 GROUPS = {
-    "apps": ["open_app", "window", "open_website", "open_chrome", "web_search", "browser", "close_tab_named",
+    "apps": ["do", "open_app", "window", "open_website", "open_chrome", "web_search", "browser", "close_tab_named",
              "address_bar", "site_search"],
     "system": ["volume", "media", "timer"],
     "keys": ["type_text", "press_key"],

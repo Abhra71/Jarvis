@@ -309,6 +309,11 @@ class Skills:
                   "append": (B, "", False, None)},
                  lambda path, content, append=False: files.write_text(path, content, bool(append))),
         ]
+        from .. import abilities  # the ability catalog (Jarvis 4): instant, exact actions in code
+        tools.insert(0, Tool("do", "Do a built-in ability (instant, exact; prefer it over clicks or keys). "
+                             + abilities.catalog_text(),
+                             {"ability": (S, "", True, list(abilities.REGISTRY)), "value": (S, "", False, None)},
+                             lambda ability, value=None: abilities.run(ability, value)))
         self.tools = {t.name: t for t in tools}
 
     def _off_limits(self) -> bool:

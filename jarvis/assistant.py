@@ -11,6 +11,7 @@ from typing import Callable
 from . import nlu
 from .audio import Mic, record_utterance
 from .brain import Brain, BrainUnavailable
+from . import abilities
 from .skills import Skills, desktop, keys, site_url, sites
 from .stt import Transcriber
 from .tts import Speaker
@@ -112,6 +113,11 @@ class Assistant:
         if site:
             self.brain.remember(text, site[1])
             return site
+        # Built-in abilities and phrases learned earlier: instant, no AI.
+        reply = abilities.handle(text, unsure)
+        if reply and not reply.startswith(("Not done", "Unknown ability")):
+            self.brain.remember(text, reply)
+            return "ability", reply
 
         intent = nlu.parse(text)
         log.info("Rules: %s", intent)

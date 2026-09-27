@@ -14,7 +14,7 @@ from datetime import datetime
 
 import httpx
 
-from . import router
+from . import abilities, router
 from .config import ROOT
 from .groq_backup import GroqBackup, NeedsVision
 from .skills import Skills, action_budget, desktop, elements, mouse, request_parts, shortcuts
@@ -241,6 +241,7 @@ class Brain:
         self.kind = "action"          # router.classify() of the current request
         self.request = ""             # the current request's words
         self.extra_groups: set[str] = set()  # tool groups the AI asked for with more_tools
+        self.turn_calls: list[tuple] = []     # (tool, args, result) this request, for phrase memory
         if not self.available:
             log.warning("No GEMINI_API_KEY or GROQ_API_KEY in .env: AI features are off, offline commands still work")
 
@@ -308,7 +309,9 @@ class Brain:
             self.extra_groups.add(group)
             log.info("AI asked for the %s tools", group)
             return f"Added the {group} tools. Use them now."
-        return self.skills.call(name, args)
+        result = self.skills.call(name, args)
+        self.turn_calls.append((name, args or {}, result))
+        return result
 
     def _post(self, model: str, body: dict) -> tuple[httpx.Response, str]:
         """POST with a "hedge". The newest Gemini models often hang on requests that normally take ~2s
@@ -424,7 +427,10 @@ class Brain:
                 self.kind, self.screen_items = "screen", items
                 log.info("%r is on screen: handling it as a screen request", router.thing_named(text))
         try:
-            return self._ask_any(text)
+            self.turn_calls = []  # the up-front screen read above doesn't count
+            reply = self._ask_any(text)
+            self._learn(text, unsure)
+            return reply
         except mouse.UserTookOver:
             log.info("User moved the mouse; stopped")  # the partial turn is already closed in history
             return "You moved the mouse, so I stopped."
@@ -435,6 +441,16 @@ class Brain:
             self.skills.confirmed = False
             self.skills.budget = None
             self.skills.launches = None
+
+    def _learn(self, text: str, unsure: bool):
+        """If the AI did this request with exactly one built-in ability, remember the phrasing so it's
+        instant (and free) next time. Only when speech recognition was sure."""
+        if unsure or len(self.turn_calls) != 1:
+            return
+        name, args, result = self.turn_calls[0]
+        ok = isinstance(result, str) and not _looks_failed(result) and not result.startswith(("Not done", "Unknown"))
+        if name == "do" and ok:
+            abilities.memory.learn(text, str(args.get("ability", "")), args.get("value"))
 
     def _just_asked(self) -> bool:
         """Did Jarvis's last reply end with a question?"""
