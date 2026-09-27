@@ -157,3 +157,15 @@ Surveyed 27 Sep (read-only). Only Jarvis-related clutter; nothing personal outsi
   - misheard rate;
   - unasked actions (target 0).
 - `docs/capabilities.md` coverage rises each phase; ROADMAP and handoff are updated at every checkpoint.
+
+## Definition of done: "industry-grade agent" (set by the user, 27 Sep)
+Jarvis 4 is finished only when all of these hold, measured on real voice sessions (a scoring script reads `logs/jarvis.log`), not just unit tests:
+
+| Pillar | Bar |
+|---|---|
+| **Reliable** | ≥ 95% of requests end in the right result, with no hang or crash in a 2-hour session. It restarts itself if it dies and survives sleep/wake and mic changes. It never loses the user's clipboard or files. |
+| **Fast** | Everyday commands (code layer) ≤ 0.5 s from end of speech to action. AI requests median ≤ 1.5 s. Vision requests ≤ 5 s and rare (< 5%). |
+| **Accurate** | Misheard rate ≤ 5%. 0 unasked actions. 0 wrong-target clicks in a session. Risky actions always ask first. |
+| **Coverage** | ≥ 90% of `docs/capabilities.md` works (live-checked). |
+| **Frugal** | ≥ 80% of requests use no AI. The free tiers are never exhausted in a normal day. Backup switches are announced. |
+| **Quality** | Every ability has unit tests plus a read-only live check (`tools/smoke.py`). Errors are logged with a cause. No personal data in the repo before any public release. |
