@@ -9,6 +9,17 @@ The goal is now **run the whole PC by voice**, with AI as a luxury. The v3 notes
 - The v3 site/token plan is superseded.
 - Build order: Step 0 clean-up → capability map → foundation (catalog, phrase memory, Groq as planner, budget) → hearing + dictation → system abilities → apps/files/messaging → voice coding → game mode + agent feel → site packs.
 
+**Jarvis 4 progress (27 Sep night):**
+- Done: Step 0 (clean-up), Phase 0 (`docs/capabilities.md`, 55% works), Phase 1a+1b.
+  - `jarvis/abilities/`: catalog + `do` tool + phrase memory.
+  - Groq `max_tokens` 400 + 400-retry; backup announcements; VMware block; budget fixes.
+- 100 tests pass. Groq 16/16, 0.78 s, 1,310 tokens.
+- **Next:**
+  - `tools/smoke.py` (read-only live checks), not built yet.
+  - Phase 2: hearing on the GPU. ctranslate2 sees the RTX 2050; faster-whisper `small.en` needs the cuBLAS/cuDNN wheels; measure VRAM and latency; dictation mode.
+  - Then Phase 3: Bluetooth, Wi-Fi, brightness, night light as abilities in `jarvis/abilities/system.py`.
+- **Adding an ability:** a function plus `@ability(name, summary, *phrase_regexes, value=hint)` in an area module under `jarvis/abilities/`, imported at the bottom of `jarvis/abilities/__init__.py`. Keep the value hints short: they go with every AI request.
+
 ## Progress (updated 27 Sep, end of session 1)
 **Done, committed and pushed** (ROADMAP.md has details, the report has measurements):
 - **Step 1, guardrails** (`9d4d728`): action budget in `Skills.call`, arg checks, "carry on" removed, "thought" leak, spoken addresses.
