@@ -135,6 +135,15 @@ Gemini Lite models hang on ~half of requests.
       "Open chemistry" with the PW page in front clicks the Chemistry link
 - [x] Measured: Groq 12/12 right item in 0.8 s (screenshot clicking was 10-11/12 in 1.5-2.5 s)
 
+### Step 5b. YouTube pack (27 Sep) — `jarvis/skills/sites/youtube.py`, no AI
+- [x] "Play X (on YouTube)": opens the results and plays the first real video. A real video's title link ends with
+      its length; ads, Shorts, channels and live streams don't. 4 s including page load (was 10-40 s)
+- [x] Player by voice with YouTube in front: play/pause (and "it's already paused"), skip ad, next, mute/unmute
+      the video, full screen, theatre, subtitles: 0.03-0.1 s, buttons pressed via UI Automation (no mouse, no focus
+      trouble); forward/back N seconds, faster/slower via YouTube's keys
+- [x] "Play the second video", "search X" on YouTube; anything else goes to the AI as before
+- [x] `.env` / key / password files can't be read or moved, and no screenshots while one is in front
+
 ### Still to do
 - [ ] Step 5: site packs (chess → YouTube → PW)
 - [ ] Step 6: Whisper on the GPU

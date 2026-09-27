@@ -11,7 +11,7 @@ from typing import Callable
 from . import nlu
 from .audio import Mic, record_utterance
 from .brain import Brain, BrainUnavailable
-from .skills import Skills, site_url
+from .skills import Skills, site_url, sites
 from .stt import Transcriber
 from .tts import Speaker
 from .usage import usage
@@ -100,6 +100,12 @@ class Assistant:
 
     def _handle(self, text: str, unsure: bool = False) -> tuple[str, str]:
         """Returns (who handled it, reply)."""
+        # The main sites first: common actions there are done in code, instantly, with no AI.
+        site = sites.handle(text, self.skills.browser)
+        if site:
+            self.brain.remember(text, site[1])
+            return site
+
         intent = nlu.parse(text)
         log.info("Rules: %s", intent)
 

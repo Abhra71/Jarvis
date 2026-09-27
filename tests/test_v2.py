@@ -20,11 +20,15 @@ def setUpModule():
     global _not_browser  # never depend on which window is in front on this PC
     _not_browser = mock.patch("jarvis.skills.elements.front_is_browser", return_value=False)
     _not_browser.start()
+    global _no_sites  # the site packs act on the real front window; their own tests fake it
+    _no_sites = mock.patch("jarvis.skills.sites.handle", return_value=None)
+    _no_sites.start()
 
 
 def tearDownModule():
     _no_keys.stop()
     _not_browser.stop()
+    _no_sites.stop()
 
 
 def _fresh_usage():
