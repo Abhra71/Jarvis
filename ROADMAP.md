@@ -115,7 +115,7 @@ Gemini Lite models hang on ~half of requests.
       17/18, median 1.8 s, and it opened Chrome for "1, 2, 4". Kept default. Smaller screenshots (800px)
       were a bit faster but aimed less precisely, so kept 1100px.
 
-## v3 (plan: docs/archive/v3-plan.md, handover: docs/handoff.md). Superseded on 27 Sep by docs/jarvis4-plan.md
+## v3 (plan: docs/archive/v3-plan.md, handover: docs/archive/v3-handoff-history.md). Superseded on 27 Sep by docs/jarvis4-plan.md
 ### Step 1. Guardrails (26 Sep)
 - [x] Action budget in code: each request may only take as many clicks/drags/typing/key presses as it
       asked for ("click No thanks" = 1, "pawn e2 to e4" = 1, "type X" = 2, open-ended = 3 per part);
