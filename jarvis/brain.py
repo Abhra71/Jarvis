@@ -17,7 +17,7 @@ import httpx
 from . import router
 from .config import ROOT
 from .groq_backup import GroqBackup, NeedsVision
-from .skills import Skills, action_budget, desktop, elements, mouse
+from .skills import Skills, action_budget, desktop, elements, mouse, shortcuts
 from .skills import volume
 from .usage import usage
 
@@ -90,6 +90,9 @@ def build_prompt(kind: str, request: str, now: str, sound: str = "", front: str 
         parts.append(f"Front window: {front}")
     if kind in ("action", "screen"):
         parts.append(f"Open windows: {windows}")
+        # Shortcut first: a key press is instant and exact; the mouse is the last resort.
+        parts.append("Prefer a shortcut (press_key) over the mouse whenever one exists.\n"
+                     + shortcuts.for_window(front, request))
     return "\n".join(parts)
 
 

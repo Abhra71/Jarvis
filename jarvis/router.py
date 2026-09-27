@@ -61,7 +61,7 @@ GROUPS = {
 _KIND_GROUPS = {
     "chat": [],
     "live": [],
-    "action": ["apps"],
+    "action": ["apps", "keys"],  # shortcuts are the fastest way to do most things
     "screen": ["apps", "keys", "screen"],
     "files": ["files", "apps"],
 }

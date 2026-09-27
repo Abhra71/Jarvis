@@ -14,7 +14,7 @@ from typing import Callable
 
 from ..nlu import Intent, normalize
 from ..usage import usage
-from . import desktop, elements, files, mouse, volume
+from . import desktop, elements, files, keys, mouse, volume
 from .apps import AppLauncher
 from .browser import SEARCH_URLS, SITES, Browser
 from .timer import Timers
@@ -76,9 +76,12 @@ def needs_confirmation(name: str, args: dict, front_window) -> str | None:
         if _RISKY_CLICK.search(target):
             return f"click '{target}'"
         return None
-    sends_enter = (name == "type_text" and args.get("press_enter")) or (
-        name == "press_key" and str(args.get("key", "")).lower() == "enter")
-    if sends_enter:
+    if name == "press_key":
+        try:
+            return keys.check(str(args.get("key", "")), front_window())[1]
+        except Exception:
+            return None  # bad keys are reported by the tool itself
+    if name == "type_text" and args.get("press_enter"):
         try:
             front = front_window().lower()
         except Exception:
@@ -244,9 +247,10 @@ class Skills:
             Tool("type_text", "Type into whatever is focused.",
                  {"text": (S, "", True, None), "press_enter": (B, "", False, None)},
                  lambda text, press_enter=False: desktop.type_text(text, press_enter)),
-            Tool("press_key", "Press a key or shortcut.",
-                 {"key": (S, "", True, sorted(desktop.KEYS)), "times": (I, "", False, None)},
-                 lambda key, times=1: desktop.press_key(key, times)),
+            Tool("press_key", "Press a key or shortcut, e.g. 'enter', 'ctrl+shift+t', 'win+d'; separate presses "
+                              "with spaces ('ctrl+k ctrl+s').",
+                 {"key": (S, "", True, None), "times": (I, "", False, None)},
+                 lambda key, times=1: self._press(key, times)),
             Tool("media", "Media keys (YouTube, Spotify…).",
                  {"action": (S, "", True, ["play_pause", "next", "previous", "stop"])},
                  lambda action: desktop.media(action)),
@@ -291,6 +295,15 @@ class Skills:
                  lambda path, content, append=False: files.write_text(path, content, bool(append))),
         ]
         self.tools = {t.name: t for t in tools}
+
+    def _press(self, combo: str, times: int = 1) -> str:
+        try:
+            refusal, _ = keys.check(combo, desktop.front_window())
+            if refusal:
+                raise PermissionError(refusal)
+            return keys.press(combo, times)
+        except keys.BadKeys as e:
+            return f"Not done: {e}. Examples: 'enter', 'ctrl+c', 'alt+tab', 'win+d', 'ctrl+k ctrl+s'."
 
     def _click_element(self, double: bool) -> str:
         result = elements.click(self._element, double)
@@ -412,6 +425,9 @@ class Skills:
                 return self.timers.start(s["seconds"])  # may be None: asks "how long?"
             case "cancel_timer":
                 return self.call("timer", {"action": "cancel"})
+            case "shortcut":
+                result = self.call("press_key", {"key": s["keys"]})
+                return s["reply"] if result.startswith("Pressed") else result
             case "tell_time":
                 from datetime import datetime
                 return datetime.now().strftime("It's %I:%M %p.").replace(" 0", " ")

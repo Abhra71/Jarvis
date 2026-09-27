@@ -56,15 +56,6 @@ _BROWSER_DONE = {
 
 _MEDIA_VK = {"play_pause": 0xB3, "next": 0xB0, "previous": 0xB1, "stop": 0xB2}
 
-KEYS = {
-    "enter": "{ENTER}", "escape": "{ESC}", "tab": "{TAB}", "space": " ", "backspace": "{BACKSPACE}",
-    "up": "{UP}", "down": "{DOWN}", "left": "{LEFT}", "right": "{RIGHT}",
-    "page_up": "{PGUP}", "page_down": "{PGDN}", "home": "{HOME}", "end": "{END}",
-    "f5": "{F5}", "f11": "{F11}", "select_all": "^a", "copy": "^c", "cut": "^x", "paste": "^v", "undo": "^z",
-    "save": "^s", "find": "^f", "new_window": "^n", "close_window": "%{F4}", "switch_window": "%{TAB}",
-    "show_desktop": "{VK_LWIN down}d{VK_LWIN up}",
-}
-
 
 # ---- finding windows ---------------------------------------------------------
 
@@ -364,22 +355,51 @@ def _escape(text: str) -> str:
     return "".join("{" + c + "}" if c in "{}+^%~()[]" else c for c in text)
 
 
+PASTE_OVER = 30  # characters: longer text is pasted in one go instead of typed key by key
+
+
+def _paste(text: str) -> bool:
+    """Put the text on the clipboard, Ctrl+V, then give the user's clipboard back. Only when the clipboard
+    holds text or nothing (an image or files can't be put back faithfully, so then we type instead)."""
+    import win32clipboard as cb
+    try:
+        cb.OpenClipboard()
+        try:
+            formats, fmt = [], cb.EnumClipboardFormats(0)
+            while fmt:
+                formats.append(fmt)
+                fmt = cb.EnumClipboardFormats(fmt)
+            if formats and not set(formats) <= {cb.CF_UNICODETEXT, cb.CF_TEXT, cb.CF_OEMTEXT, cb.CF_LOCALE}:
+                return False
+            old = cb.GetClipboardData(cb.CF_UNICODETEXT) if cb.CF_UNICODETEXT in formats else None
+            cb.EmptyClipboard()
+            cb.SetClipboardText(text, cb.CF_UNICODETEXT)
+        finally:
+            cb.CloseClipboard()
+        keyboard.send_keys("^v")
+        time.sleep(0.15)  # let the app take it before the clipboard changes back
+        cb.OpenClipboard()
+        try:
+            cb.EmptyClipboard()
+            if old is not None:
+                cb.SetClipboardText(old, cb.CF_UNICODETEXT)
+        finally:
+            cb.CloseClipboard()
+        return True
+    except Exception:
+        log.debug("Paste failed; typing instead", exc_info=True)
+        return False
+
+
 def type_text(text: str, press_enter: bool = False) -> str:
-    keyboard.send_keys(_escape(text), with_spaces=True, with_newlines=False, pause=0.01)
+    if len(text) <= PASTE_OVER or not _paste(text):
+        # Short text is typed so you can see it. (Pasting is also safer for several lines: typed new lines
+        # would be Enter presses, which send a message in a chat app.)
+        keyboard.send_keys(_escape(text), with_spaces=True, with_newlines=False, pause=0.01)
     if press_enter:
         time.sleep(STEP_PAUSE)
         keyboard.send_keys("{ENTER}")
     return "Typed it."
-
-
-def press_key(key: str, times: int = 1) -> str:
-    keys = KEYS.get(key)
-    if not keys:
-        return f"Unknown key {key}."
-    for _ in range(max(1, min(int(times or 1), 20))):
-        keyboard.send_keys(keys, with_spaces=True)
-        time.sleep(0.05)
-    return "Done."
 
 
 def media(action: str) -> str:

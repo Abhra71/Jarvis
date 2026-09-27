@@ -11,7 +11,7 @@ from typing import Callable
 from . import nlu
 from .audio import Mic, record_utterance
 from .brain import Brain, BrainUnavailable
-from .skills import Skills, site_url, sites
+from .skills import Skills, desktop, keys, site_url, sites
 from .stt import Transcriber
 from .tts import Speaker
 from .usage import usage
@@ -79,6 +79,13 @@ class Assistant:
         """Simple, clear commands run instantly offline; anything fancier goes to Gemini."""
         if intent.name == "web_search":
             return False  # "search it here", "…in the address bar": the AI handles context far better
+        if intent.name == "shortcut":
+            # Only real keys, and nothing that needs a yes (Enter in a chat sends it): the AI asks those.
+            try:
+                refusal, needs_yes = keys.check(intent.slots["keys"], desktop.front_window())
+            except keys.BadKeys:
+                return False
+            return not (refusal or needs_yes)
         if intent.name == "open_profile":
             return self.skills.browser.find(intent.slots["profile"]) is not None
         if intent.name == "open_app" and _NEEDS_AI.search(text.lower()):

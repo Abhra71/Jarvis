@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 
 user32 = ctypes.windll.user32
 
-MOVE_SECONDS = 0.35   # how long the glide to a target takes, so you can follow it
+MOVE_SECONDS = 0.12   # how long the glide to a target takes: quick, but still visible (was 0.35 s)
 TAKEOVER_PIXELS = 40  # cursor moved further than this by someone else = you took over
 
 _MOUSEEVENTF = {"left": (0x0002, 0x0004), "right": (0x0008, 0x0010), "middle": (0x0020, 0x0040)}
@@ -84,14 +84,14 @@ def glide_to(px: int, py: int):
 def click(x: float, y: float, button: str = "left", double: bool = False) -> str:
     px, py = to_pixels(x, y)
     glide_to(px, py)
-    time.sleep(0.08)
+    time.sleep(0.03)
     down, up = _MOUSEEVENTF.get(button, _MOUSEEVENTF["left"])
     for _ in range(2 if double else 1):
         user32.mouse_event(down, 0, 0, 0, 0)
         user32.mouse_event(up, 0, 0, 0, 0)
         time.sleep(0.06)
     log.info("%s%s-click at (%d, %d)", "double " if double else "", button, px, py)
-    time.sleep(0.3)
+    time.sleep(0.12)
     return f"{'Double-' if double else ''}{button.capitalize()}-clicked at screen position {x:.0f},{y:.0f}."
 
 
@@ -104,7 +104,7 @@ def scroll_at(x: float, y: float, direction: str = "down", amount: int = 3) -> s
         _check_takeover()
         user32.mouse_event(_WHEEL, 0, 0, delta, 0)
         time.sleep(0.05)
-    time.sleep(0.3)
+    time.sleep(0.1)
     return f"Scrolled {direction}."
 
 
@@ -126,7 +126,7 @@ def click_pair(x1: float, y1: float, x2: float, y2: float, drag: bool = False) -
         time.sleep(0.1)
         user32.mouse_event(up, 0, 0, 0, 0)
         log.info("Dragged from %s,%s to %s,%s", x1, y1, x2, y2)
-        time.sleep(0.3)
+        time.sleep(0.15)
         return f"Dragged from {x1:.0f},{y1:.0f} to {x2:.0f},{y2:.0f}."
     click(x1, y1)
     click(x2, y2)

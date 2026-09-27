@@ -590,7 +590,7 @@ class RoutingTest(unittest.TestCase):
             "search for youtube here": "ai",
             "open youtube in my work profile": "ai",
             "search lofi music on youtube": "ai",
-            "open a new tab": "ai",
+            "open a new tab": "rules",  # one shortcut (ctrl+t), no AI
             "close chrome": "ai",
             "what's the capital of peru": "ai",
             "open spotify and play some music": "ai",

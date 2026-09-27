@@ -77,6 +77,67 @@ def parse_duration(text: str) -> int | None:
     return total or None
 
 
+# Everyday commands that are one shortcut on the window in front: instant, no AI. They work the same in
+# browsers, File Explorer, VS Code and most apps. (Checked before "open X", so "open a new tab" lands here.)
+_SHORTCUTS = [
+    (r"(open )?(a )?new tab", "ctrl+t", "New tab."),
+    (r"close (this |the |current )?tab", "ctrl+w", "Closed the tab."),
+    (r"(reopen|restore|bring back) (the )?(last |closed |last closed )?tab", "ctrl+shift+t", "Reopened the tab."),
+    (r"(go to |switch to )?(the )?next tab", "ctrl+tab", "Next tab."),
+    (r"(go to |switch to )?(the )?previous tab", "ctrl+shift+tab", "Previous tab."),
+    (r"(go )?back", "alt+left", "Went back."),
+    (r"(go )?forward", "alt+right", "Went forward."),
+    (r"(reload|refresh)( (the |this )?page)?", "f5", "Reloaded."),
+    (r"zoom in", "ctrl++", "Zoomed in."),
+    (r"zoom out", "ctrl+-", "Zoomed out."),
+    (r"(reset|normal) zoom", "ctrl+0", "Zoom reset."),
+    (r"copy( (that|this|it))?", "ctrl+c", "Copied."),
+    (r"paste( (that|this|it|here))?", "ctrl+v", "Pasted."),
+    (r"cut( (that|this|it))?", "ctrl+x", "Cut."),
+    (r"undo( (that|it))?", "ctrl+z", "Undone."),
+    (r"redo( (that|it))?", "ctrl+y", "Redone."),
+    (r"select (all|everything)", "ctrl+a", "Selected everything."),
+    (r"save( (it|this|that|the file))?", "ctrl+s", "Saved."),
+    (r"(switch|change) (window|windows|app|apps)|alt tab", "alt+tab", "Switched."),
+    (r"(show|go to) (the )?desktop|minimi[sz]e (everything|all( windows)?)", "win+d", "Here's the desktop."),
+    (r"(take a |take )?screenshot|snip( it)?|(screen|area) snip", "win+shift+s", "Drag over the area to snip."),
+    (r"(open )?(the )?clipboard( history)?", "win+v", "Here's the clipboard history."),
+    (r"find on (this )?page|find in (this )?page", "ctrl+f", "Find is open."),
+]
+_SHORTCUTS = [(re.compile(f"^(?:{p})$"), k, r) for p, k, r in _SHORTCUTS]
+_SPOKEN_KEYS = {"control": "ctrl", "ctrl": "ctrl", "shift": "shift", "alt": "alt", "windows": "win",
+                "window": "win", "win": "win", "escape": "esc", "enter": "enter", "return": "enter",
+                "page up": "pageup", "page down": "pagedown", "plus": "plus", "minus": "minus"}
+_MODIFIER_WORDS = {"ctrl", "shift", "alt", "win"}
+
+
+def _spoken_combo(words: str) -> str:
+    """'control shift t' -> 'ctrl+shift+t'; 'alt f4' -> 'alt+f4'; 'enter' -> 'enter'."""
+    for spoken in ("page up", "page down"):
+        words = words.replace(spoken, spoken.replace(" ", ""))
+    presses, current = [], []
+    for w in words.split():
+        w = _SPOKEN_KEYS.get(w, w)
+        current.append(w)
+        if w not in _MODIFIER_WORDS:
+            presses.append("+".join(current))
+            current = []
+    if current:
+        presses.append("+".join(current))
+    return " ".join(presses)
+
+
+def _shortcut(text: str) -> tuple[str, str] | None:
+    for pattern, keys, reply in _SHORTCUTS:
+        if pattern.match(text):
+            return keys, reply
+    m = re.match(r"^(?:press|hit|use the shortcut|use shortcut)\s+(?:the\s+)?(.+?)(?:\s+(?:key|keys|shortcut))?$", text)
+    if m:
+        combo = _spoken_combo(m.group(1))
+        return combo, f"Pressed {combo}."
+    return None
+
+
 def parse(raw: str) -> Intent | None:
     text = normalize(raw)
     if not text:
@@ -110,6 +171,11 @@ def parse(raw: str) -> Intent | None:
             return Intent("change_volume", {"direction": -1})
         if re.search(r"\b(max|maximum|full)\b", text):
             return Intent("set_volume", {"level": 100})
+
+    # Keyboard shortcuts on the window in front, like a person would press them.
+    shortcut = _shortcut(text)
+    if shortcut:
+        return Intent("shortcut", {"keys": shortcut[0], "reply": shortcut[1]})
 
     # Web search
     m = re.match(r"^(?:search(?: google)?(?: for)?|google|look up)\s+(.+?)(?:\s+on google)?$", text)
