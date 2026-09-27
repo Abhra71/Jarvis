@@ -1,6 +1,13 @@
-# Jarvis v3: handover (26 Sep 2026)
+# Jarvis: handover (living document)
 
-Start here in a new chat: "continue the Jarvis v3 build". Read this file, [v3-plan.md](v3-plan.md) and [ai-provider-report.md](ai-provider-report.md).
+Start here in a new chat: "continue the Jarvis build". Read this file, then [jarvis4-plan.md](jarvis4-plan.md) (the current plan) and [ai-provider-report.md](ai-provider-report.md).
+
+## 27 Sep: new beginning, "Jarvis 4"
+The goal is now **run the whole PC by voice**, with AI as a luxury. The v3 notes below are history.
+- [jarvis4-plan.md](jarvis4-plan.md) has the approved plan.
+- The old v3 plan is in [archive/v3-plan.md](archive/v3-plan.md).
+- The v3 site/token plan is superseded.
+- Build order: Step 0 clean-up → capability map → foundation (catalog, phrase memory, Groq as planner, budget) → hearing + dictation → system abilities → apps/files/messaging → voice coding → game mode + agent feel → site packs.
 
 ## Progress (updated 27 Sep, end of session 1)
 **Done, committed and pushed** (ROADMAP.md has details, the report has measurements):
