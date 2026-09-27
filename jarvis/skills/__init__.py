@@ -350,7 +350,7 @@ class Skills:
                 return "Not done: give the item's id (from page_elements) or its name."
             self._element, why = elements.resolve(args.get("id"), args.get("name"))
             if not self._element:
-                return why
+                return f"Not clicked: {why}"  # "Not clicked" marks it as failed, so it is never spoken as a reply
             args = {**args, "target": self._element.name}
         risk = needs_confirmation(name, args, desktop.front_window)
         if risk and not self.confirmed:

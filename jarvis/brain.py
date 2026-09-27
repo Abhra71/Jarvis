@@ -45,6 +45,7 @@ web_search with that site; if that site is in front, site_search. "Here", "this 
 tab (address_bar / browser / site_search), not a new window.
 - "Close this" right after you opened a window = that window. Close a tab only if they say tab: "close the chess \
 tab" = close_tab_named; "close this tab" = browser close_tab. "Close all of them" = window close_all.
+- Minimize/maximize/restore/close a window = the window tool, never clicking its title-bar buttons.
 - "It", "that" = what you did last or the front window; if unclear, ask. Searching, and opening, closing or \
 switching apps, windows and tabs, need no confirmation: just do them."""
 

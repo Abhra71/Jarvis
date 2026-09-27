@@ -183,3 +183,17 @@ class ScreenAsTextRoutingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FailedClickTest(unittest.TestCase):
+    def test_a_missing_item_is_a_failure_not_a_reply(self):
+        # 27 Sep: "item isn't on screen any more. Current items: [1] link ..." was read out loud.
+        from jarvis.brain import fast_reply
+        from jarvis.skills import Skills
+        with mock.patch("jarvis.skills.AppLauncher"), mock.patch("jarvis.skills.Browser"):
+            s = Skills({"volume": {"step": 10}, "apps": {}}, announce=print)
+        with mock.patch.object(elements, "read_front", return_value=POPUP), \
+                mock.patch("jarvis.skills.desktop.front_window", return_value=""):
+            result = s.call("click_element", {"name": "Maximize"})
+        self.assertTrue(result.startswith("Not clicked"))
+        self.assertIsNone(fast_reply("maximize the brave screen", ["click_element"], [result]))
