@@ -41,8 +41,14 @@ hedge_after_seconds = 5
 hedge_model = "gemini-3.1-flash-lite"
 
 [stt]
-model = "base.en"            # tiny.en (fastest) / base.en / small.en (most accurate, slower)
+model = "base.en"            # on the CPU: the fallback, and the whole thing if there's no NVIDIA GPU
 compute_type = "int8"
+# The better model on the GPU, but only during a conversation: it loads on "Hey Jarvis" and its process
+# exits after gpu_idle_seconds of quiet, so the GPU is completely free while Jarvis just waits (user's rule).
+# Measured 27 Sep (tools/stt_eval.py, 60 clips): small.en GPU 4.9% word errors in 0.25 s and ~360 MB;
+# base.en CPU 7.2% in 0.65 s. Remove gpu_model to use the CPU only.
+gpu_model = "small.en"
+gpu_idle_seconds = 120
 
 [tts]
 engine = "edge"              # "edge" (natural, needs internet) / "offline" (pyttsx3) / "beep"

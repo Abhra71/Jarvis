@@ -224,6 +224,7 @@ class Assistant:
 
         if not self.wake.process(frame):
             return
+        self.stt.prepare()  # GPU hearing starts loading now, while Jarvis answers (only during a conversation)
 
         self._set(State.LISTENING)
         self.speaker.chime("listen")

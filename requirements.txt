@@ -15,3 +15,6 @@ pywinauto
 pywin32
 psutil
 chess
+# Optional: speech on an NVIDIA GPU during conversations (stt_worker.py); without them the CPU is used
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*

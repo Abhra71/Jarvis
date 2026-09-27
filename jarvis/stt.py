@@ -1,8 +1,12 @@
 """Offline speech-to-text with faster-whisper."""
 
+import json
 import logging
 import os
 import re
+import subprocess
+import sys
+import threading
 
 # Windows without Developer Mode can't symlink; the HF cache works fine without it.
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
@@ -19,7 +23,10 @@ log = logging.getLogger(__name__)
 # misheard on 26 Sep ("Close this one" -> "North this one", "Scroll" -> "Scrawl").
 HINT = ("Open Chrome. Volume 40. Volume up. Mute. Search for Python tutorials. Set a timer for 5 minutes. "
         "Close this one. Close this tab. Close both of them. Scroll to the bottom. Go back. Next tab. "
-        "Open my main profile. Move the pawn from e2 to e4. Knight to f3. Bishop takes c4. Open chess.")
+        "Open my main profile. Move the pawn from e2 to e4. Knight to f3. Bishop takes c4. Open chess. "
+        # The user's own names, misheard in sessions and in tools/stt_eval.py (27 Sep): "Physics Voila",
+        # "Groke", "cloud app", "rocker's", "your football".
+        "Physics Wallah, Groq, Gemini, Claude, Rockerz 480, eFootball, BlueJ, WhatsApp, VS Code, YouTube.")
 
 _SENTENCE = re.compile(r"[^.!?]+[.!?]*")
 
@@ -37,12 +44,89 @@ def clean_transcript(text: str) -> str:
     return " ".join(kept)
 
 
+class GpuHearing:
+    """The small.en model on the GPU, in a helper process that only lives during a conversation
+    (the user's rule: no GPU memory while Jarvis is just waiting). See stt_worker.py."""
+
+    def __init__(self, model: str, idle_seconds: float):
+        self.model, self.idle = model, idle_seconds
+        self.proc: subprocess.Popen | None = None
+        self.ready = threading.Event()
+        self.failed = False
+        self.lock = threading.Lock()
+
+    def alive(self) -> bool:
+        return self.proc is not None and self.proc.poll() is None
+
+    def start(self):
+        """Called on "Hey Jarvis": load the model while Jarvis answers and you start talking."""
+        with self.lock:
+            if self.alive() or self.failed:
+                return
+            self.ready.clear()
+            self.proc = subprocess.Popen(
+                [sys.executable, "-m", "jarvis.stt_worker", self.model, str(self.idle), str(MODELS_DIR / "whisper")],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                cwd=str(MODELS_DIR.parent), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            threading.Thread(target=self._wait_ready, args=(self.proc,), daemon=True).start()
+
+    def _wait_ready(self, proc: subprocess.Popen):
+        line = proc.stdout.readline()
+        try:
+            msg = json.loads(line) if line else {"error": "the helper exited"}
+        except ValueError:
+            msg = {"error": f"unexpected output {line[:80]!r}"}
+        if msg.get("ready"):
+            log.info("GPU hearing ready (%s, loaded in %.1fs)", self.model, msg.get("load_seconds", 0))
+            self.ready.set()
+        else:
+            log.warning("GPU hearing unavailable, using the CPU: %s", msg.get("error"))
+            self.failed = True  # e.g. no NVIDIA libraries: don't keep trying this session
+            proc.kill()
+
+    def transcribe(self, audio: np.ndarray, prompt: str, timeout: float = 8.0) -> dict | None:
+        """{"text", "confidence", "no_speech", "segments"} or None (then the CPU model is used)."""
+        if not self.alive():
+            self.start()
+        # Still loading (a very short first sentence)? Don't make the user wait: the CPU model takes this
+        # one (~0.65 s) and the GPU takes the next.
+        if not self.ready.wait(0.5) or not self.alive():
+            log.info("GPU hearing still loading; the CPU takes this sentence")
+            return None
+        proc = self.proc
+        result: dict = {}
+
+        def talk():
+            try:
+                data = np.ascontiguousarray(audio, dtype=np.float32).tobytes()
+                proc.stdin.write((json.dumps({"samples": len(data) // 4, "prompt": prompt}) + "\n").encode())
+                proc.stdin.write(data)
+                proc.stdin.flush()
+                result.update(json.loads(proc.stdout.readline()))
+            except (OSError, ValueError) as e:
+                result["error"] = str(e)
+
+        t = threading.Thread(target=talk, daemon=True)
+        t.start()
+        t.join(timeout)
+        if t.is_alive() or "error" in result or "text" not in result:
+            log.warning("GPU hearing failed (%s); using the CPU this time", result.get("error", "timed out"))
+            proc.kill()
+            return None
+        return result
+
+    def stop(self):
+        if self.alive():
+            self.proc.kill()
+
+
 class Transcriber:
     def __init__(self, cfg: dict, vocabulary: list[str] | None = None):
         # Names of the user's installed apps, so e.g. "Claude" isn't heard as "Cloud".
         self.unsure = False  # was the last transcript a shaky guess?
         self.unsure_below = cfg.get("unsure_below", -0.35)
         self.hint = HINT + (" Apps: " + ", ".join(w.title() for w in vocabulary) + "." if vocabulary else "")
+        # The CPU model is always there (RAM only, no GPU): the fallback, and the whole thing without a GPU.
         log.info("Loading Whisper model %s (first run downloads it)...", cfg["model"])
         self.model = WhisperModel(
             cfg["model"],
@@ -50,27 +134,42 @@ class Transcriber:
             compute_type=cfg["compute_type"],
             download_root=str(MODELS_DIR / "whisper"),
         )
-        log.info("Whisper ready")
+        gpu_model = cfg.get("gpu_model")
+        self.gpu = GpuHearing(gpu_model, cfg.get("gpu_idle_seconds", 120)) if gpu_model else None
+        log.info("Whisper ready%s", f" (GPU {gpu_model} on demand)" if self.gpu else "")
+
+    def prepare(self):
+        """The wake word was heard: get the GPU model ready while Jarvis replies."""
+        if self.gpu:
+            self.gpu.start()
+
+    def close(self):
+        if self.gpu:
+            self.gpu.stop()
 
     def transcribe(self, audio: np.ndarray) -> str:
         self.unsure = False
-        segments, _ = self.model.transcribe(
-            audio,
-            language="en",
-            beam_size=3,  # weighs a few alternatives; measured at no extra time on this PC
-            initial_prompt=self.hint,
-            condition_on_previous_text=False,
-        )
-        segments = list(segments)
-        text = clean_transcript(" ".join(s.text for s in segments).strip())
-        if not segments:
+        result = self.gpu.transcribe(audio, self.hint) if self.gpu else None
+        if result is None:
+            segments, _ = self.model.transcribe(
+                audio,
+                language="en",
+                beam_size=3,  # weighs a few alternatives; measured at no extra time on this PC
+                initial_prompt=self.hint,
+                condition_on_previous_text=False,
+            )
+            segments = list(segments)
+            result = {"text": " ".join(s.text for s in segments).strip(), "segments": len(segments),
+                      "confidence": min((s.avg_logprob for s in segments), default=0.0),
+                      "no_speech": max((s.no_speech_prob for s in segments), default=1.0)}
+        text = clean_transcript(result["text"])
+        if not result["segments"]:
             log.info("Heard: ''")
             return ""
         # Whisper's own scores. Measured 26 Sep: pure noise = no-speech ~0.85 (and it "hears" its own hint,
         # e.g. "Open the pawn from e2 to e4"); real speech <= 0.2. Clear speech = confidence ~ -0.05,
         # misheard ("Look at that" for "What's the capital of Japan?") = -0.4 to -0.8.
-        confidence = min(s.avg_logprob for s in segments)
-        no_speech = max(s.no_speech_prob for s in segments)
+        confidence, no_speech = result["confidence"], result["no_speech"]
         if no_speech > 0.6 and confidence < -0.5:
             log.info("Ignoring %r: sounds like noise, not speech (no-speech %.2f)", text, no_speech)
             return ""

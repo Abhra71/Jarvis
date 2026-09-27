@@ -1,0 +1,62 @@
+"""Hearing: the GPU model only during a conversation, with the CPU model as the fallback. No real models."""
+
+import unittest
+from unittest import mock
+
+import numpy as np
+
+from jarvis import stt
+
+
+class FakeSegment:
+    def __init__(self, text, logprob=-0.1, no_speech=0.01):
+        self.text, self.avg_logprob, self.no_speech_prob = text, logprob, no_speech
+
+
+def _transcriber(gpu_result):
+    with mock.patch.object(stt, "WhisperModel") as cpu_cls:
+        cpu_cls.return_value.transcribe.return_value = ([FakeSegment("heard on the cpu")], None)
+        t = stt.Transcriber({"model": "base.en", "compute_type": "int8", "gpu_model": "small.en"})
+    t.gpu = mock.Mock()
+    t.gpu.transcribe.return_value = gpu_result
+    return t
+
+
+class HearingTest(unittest.TestCase):
+    def test_gpu_answer_is_used(self):
+        t = _transcriber({"text": "Open Physics Wallah.", "segments": 1, "confidence": -0.1, "no_speech": 0.0})
+        self.assertEqual(t.transcribe(np.zeros(16000, dtype=np.float32)), "Open Physics Wallah.")
+        t.model.transcribe.assert_not_called()
+
+    def test_cpu_takes_over_when_the_gpu_is_not_ready_or_fails(self):
+        t = _transcriber(None)
+        self.assertEqual(t.transcribe(np.zeros(16000, dtype=np.float32)), "heard on the cpu")
+
+    def test_wake_word_starts_the_gpu_and_nothing_before(self):
+        with mock.patch.object(stt, "WhisperModel"), mock.patch.object(stt.subprocess, "Popen") as popen:
+            t = stt.Transcriber({"model": "base.en", "compute_type": "int8", "gpu_model": "small.en"})
+            popen.assert_not_called()  # the user's rule: no GPU while Jarvis just waits
+            with mock.patch.object(stt.threading, "Thread"):
+                t.prepare()
+            popen.assert_called_once()
+            self.assertIn("jarvis.stt_worker", popen.call_args.args[0])
+
+    def test_no_gpu_model_configured_means_cpu_only(self):
+        with mock.patch.object(stt, "WhisperModel"):
+            t = stt.Transcriber({"model": "base.en", "compute_type": "int8"})
+        self.assertIsNone(t.gpu)
+        t.prepare()  # nothing to start
+
+    def test_a_broken_gpu_is_not_retried_all_session(self):
+        g = stt.GpuHearing("small.en", 120)
+        proc = mock.Mock()
+        proc.stdout.readline.return_value = b'{"error": "cublas64_12.dll not found"}\n'
+        g._wait_ready(proc)
+        self.assertTrue(g.failed)
+        with mock.patch.object(stt.subprocess, "Popen") as popen:
+            g.start()
+        popen.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()
