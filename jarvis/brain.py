@@ -519,9 +519,13 @@ class Brain:
         elif self.kind == "screen":
             # Chess on 26 Sep: every move was look, think, click, look, think, click (13-32 s). Sending the
             # screen up front lets the AI act in its first answer.
-            turn[0]["parts"] += [{"text": "(The current screen is attached; positions are x,y from 0 to 1000.)"},
-                                 {"inlineData": {"mimeType": "image/jpeg",
-                                                 "data": base64.b64encode(self.skills.snapshot()).decode()}}]
+            try:
+                shot = self.skills.snapshot()
+                turn[0]["parts"] += [{"text": "(The current screen is attached; positions are x,y from 0 to 1000.)"},
+                                     {"inlineData": {"mimeType": "image/jpeg",
+                                                     "data": base64.b64encode(shot).decode()}}]
+            except PermissionError as e:
+                turn[0]["parts"].append({"text": f"(No screenshot: {e})"})
         unchecked_click = False  # clicked since the last look at the screen
         checks = 0               # "look before you claim" checks so far (capped, each costs a round trip)
         asked_again = False      # a garbled final answer gets one retry

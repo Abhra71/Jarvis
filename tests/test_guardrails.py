@@ -134,3 +134,38 @@ class SpokenAddressTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SecretsTest(unittest.TestCase):
+    def test_secret_file_names(self):
+        from jarvis.skills.files import is_secret
+        for name in (".env", ".env.local", "server.pem", "id_rsa", "google-credentials.json", "my passwords.txt",
+                     "api_keys.txt", ".env - Jarvis - Visual Studio Code", "Get API key | Google AI Studio"):
+            self.assertTrue(is_secret(name), name)
+        for name in ("notes.txt", "environment.md", "keyboard.txt", "YouTube - Google Chrome", "monkey.png"):
+            self.assertFalse(is_secret(name), name)
+
+    def test_secret_files_are_never_read_or_moved(self):
+        import tempfile
+        from pathlib import Path
+        from jarvis.skills import files
+        with tempfile.TemporaryDirectory() as d:
+            env = Path(d) / ".env"
+            env.write_text("GROQ_API_KEY=abc", encoding="utf-8")
+            for fn in (lambda: files.read_text(str(env)), lambda: files.copy_path(str(env), d),
+                       lambda: files.move_path(str(env), d), lambda: files.rename_path(str(env), "x.txt")):
+                with self.assertRaises(PermissionError):
+                    fn()
+            self.assertTrue(env.exists())
+
+    def test_no_screenshot_or_screen_reading_while_a_secret_file_is_in_front(self):
+        s = _skills()
+        with mock.patch("jarvis.skills.desktop.front_window", return_value="code: .env - Jarvis - Visual Studio Code"), \
+                mock.patch("jarvis.skills.desktop.screenshot_jpeg", return_value=b"jpg") as shot, \
+                mock.patch("jarvis.skills.elements.page_elements", return_value="[1] button") as items:
+            self.assertTrue(s.call("look_at_screen", {}).startswith("Not allowed"))
+            self.assertTrue(s.call("page_elements", {}).startswith("Not allowed"))
+            with self.assertRaises(PermissionError):
+                s.snapshot()
+        shot.assert_not_called()
+        items.assert_not_called()

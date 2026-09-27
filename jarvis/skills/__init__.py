@@ -192,13 +192,13 @@ class Skills:
                   "action": (S, "", True, ["focus", "minimize", "maximize", "restore", "close", "close_all"])},
                  lambda app, action: desktop.window_action(app, action)),
             Tool("page_elements", "List the clickable items (buttons, links, fields) in the front window, with ids.",
-                 {}, lambda: elements.page_elements()),
+                 {}, lambda: self._guard_secrets() or elements.page_elements()),
             Tool("click_element", "Click an on-screen item by its id from page_elements, or by its name.",
                  {"id": (I, "", False, None), "name": (S, "", False, None), "double": (B, "", False, None)},
                  lambda id=None, name=None, double=False, target="": self._click_element(bool(double))),
             Tool("look_at_screen", "Screenshot of the whole screen. Positions are x,y from 0 to 1000.", {},
                  lambda: {"text": "Screenshot attached. Give positions as x,y from 0 to 1000 of this image.",
-                          "image_jpeg": desktop.screenshot_jpeg()}),
+                          "image_jpeg": self._screenshot()}),
             Tool("click", "Move the real mouse to x,y (0-1000, from a screenshot) and click.",
                  {"x": (I, "", True, None), "y": (I, "", True, None),
                   "target": (S, "what you're clicking, e.g. 'second video title', 'Send button'", True, None),
@@ -310,9 +310,23 @@ class Skills:
         so the AI can act straight away instead of spending a round trip on look_at_screen."""
         usage.action("look_at_screen")
         self.on_tool("look_at_screen")
-        jpeg = desktop.screenshot_jpeg()
+        jpeg = self._screenshot()
         self.screen_fresh = True
         return jpeg
+
+    def _guard_secrets(self):
+        """No screenshot or screen reading while a secrets file (.env, keys, passwords) is in front."""
+        try:
+            title = desktop.front_window()
+        except Exception:
+            return
+        if files.is_secret(title):
+            raise PermissionError("a secrets file (keys or passwords) is open in front, so I won't look at the "
+                                  "screen. Tell the user to switch away from it first.")
+
+    def _screenshot(self) -> bytes:
+        self._guard_secrets()
+        return desktop.screenshot_jpeg()
 
     def declarations(self, names: list[str] | None = None) -> list[dict]:
         """All tools, or only the named ones (each request sends just what its kind of job needs)."""

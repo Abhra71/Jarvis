@@ -6,6 +6,7 @@ Deliberately NOT possible: deleting anything, or overwriting an existing file
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -47,7 +48,21 @@ def resolve(path: str) -> Path:
     return (p if p.is_absolute() else folders.get("Desktop", HOME) / p).resolve()
 
 
+# Files that hold secrets (API keys, passwords, private keys). Jarvis never reads, copies, moves, renames
+# or writes them, so their contents can't reach an AI service. (27 Sep: it tried to read .env while the
+# user was editing it, and took screenshots with the keys on screen.)
+_SECRET = re.compile(r"(^|[\s\\/])\.env(\.[\w-]+)?\b|\.(pem|key|pfx|p12|kdbx|ppk|keystore)\b|\bid_(rsa|ed25519|ecdsa)\b|"
+                     r"credential|secret|password|passwd|api[_ -]?keys?\b|\btokens?\.(json|txt)", re.I)
+
+
+def is_secret(name: str) -> bool:
+    """Is this file name (or a window title showing one) a secrets file?"""
+    return bool(_SECRET.search(name or ""))
+
+
 def _check_allowed(p: Path):
+    if is_secret(p.name):
+        raise PermissionError(f"{p.name} holds secrets (keys or passwords); I never read or handle those files.")
     for blocked in _BLOCKED:
         if p == blocked or blocked in p.parents:
             raise PermissionError(f"{p} is a Windows system folder; I don't touch those.")
@@ -142,6 +157,7 @@ def copy_path(source: str, destination: str) -> str:
     src = resolve(source)
     if not src.exists():
         return f"{src} doesn't exist."
+    _check_allowed(src)
     dst = _target(src, destination)
     _check_allowed(dst)
     if dst.exists():
@@ -183,6 +199,7 @@ _TEXT_EXT = {".txt", ".md", ".csv", ".json", ".py", ".js", ".ts", ".html", ".css
 
 def read_text(path: str, max_chars: int = 6000) -> str:
     p = resolve(path)
+    _check_allowed(p)
     if not p.is_file():
         return f"{p} isn't a file."
     if p.suffix.lower() not in _TEXT_EXT:
