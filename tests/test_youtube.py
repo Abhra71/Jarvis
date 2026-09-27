@@ -22,7 +22,7 @@ class VideoTitleTest(unittest.TestCase):
 
 
 class CommandTest(unittest.TestCase):
-    def _run(self, text, front="lofi music - YouTube - Google Chrome", buttons=("Pause keyboard shortcut k",)):
+    def _run(self, text, front="lofi music - YouTube - Google Chrome", buttons=("Pause keyboard shortcut k",), unsure=False):
         pressed, keys = [], []
 
         def press(hwnd, *prefixes):
@@ -45,7 +45,7 @@ class CommandTest(unittest.TestCase):
                 mock.patch.object(youtube, "play", side_effect=lambda q, h, b: f"PLAY {q} {'here' if h else 'new'}"), \
                 mock.patch.object(youtube, "play_nth", side_effect=lambda h, n: f"NTH {n}"), \
                 mock.patch.object(youtube.desktop, "address_bar") as bar:
-            reply = youtube.handle(text, browser=None)
+            reply = youtube.handle(text, browser=None, unsure=unsure)
         return reply, pressed, keys, bar
 
     def test_player_controls(self):
@@ -87,6 +87,15 @@ class CommandTest(unittest.TestCase):
         self.assertIsNone(self._run("play lofi", front=gmail)[0])  # could mean Spotify: the AI decides
         self.assertEqual(self._run("play lofi on youtube", front=gmail)[0], "PLAY lofi new")
         self.assertEqual(self._run("play lo fi on you tube", front=gmail)[0], "PLAY lo fi new")
+
+    def test_context_and_shaky_speech_go_to_the_ai(self):
+        # 27 Sep: "Search it, but in this channel, in this page…" was searched word for word.
+        self.assertIsNone(self._run("search it but in this channel in this page")[0])
+        self.assertIsNone(self._run("play that one again")[0])
+        reply, _, _, bar = self._run("search for a nice runviercing polygood song", unsure=True)
+        self.assertIsNone(reply)
+        bar.assert_not_called()
+        self.assertEqual(self._run("pause", unsure=True)[0], "Paused.")  # controls are still fine
 
     def test_unknown_requests_go_to_the_ai(self):
         self.assertIsNone(self._run("what is this video about")[0])

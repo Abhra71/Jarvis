@@ -13,11 +13,12 @@ log = logging.getLogger(__name__)
 PACKS = [("youtube", youtube.handle)]
 
 
-def handle(text: str, browser) -> tuple[str, str] | None:
-    """(route, reply) if a site pack handled the request, else None."""
+def handle(text: str, browser, unsure: bool = False) -> tuple[str, str] | None:
+    """(route, reply) if a site pack handled the request, else None.
+    unsure: speech recognition wasn't confident; packs then only do safe player-style commands."""
     for name, pack in PACKS:
         try:
-            reply = pack(text, browser)
+            reply = pack(text, browser, unsure)
         except Exception:
             log.exception("The %s pack failed; the AI will take it", name)
             return None

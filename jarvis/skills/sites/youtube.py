@@ -158,7 +158,17 @@ def _number(word: str | None, default: int) -> int:
     return int(word) if word.isdigit() else _NUMBERS.get(word, default)
 
 
-def handle(text: str, browser) -> str | None:
+# Words that point at what's on screen or said before: "search it in this channel" needs the AI.
+_CONTEXT = re.compile(r"\b(it|this|that|these|those|here|channel|page|same|one)\b")
+
+
+def _free_query(query: str, unsure: bool) -> bool:
+    """Can the code search/play this as-is? Not when speech recognition was unsure (27 Sep: "a nice
+    runviercing polygood song"), and not when it refers to context."""
+    return bool(query) and not unsure and not _CONTEXT.search(query)
+
+
+def handle(text: str, browser, unsure: bool = False) -> str | None:
     """Reply if this is a YouTube command we can do in code, else None (the AI takes it)."""
     t = normalize(text)
     hwnd = win32gui.GetForegroundWindow()
@@ -167,7 +177,7 @@ def handle(text: str, browser) -> str | None:
 
     if not in_front:
         m = _PLAY_SEARCH.match(t)
-        if m and m.group(1):  # "play X on YouTube" from anywhere
+        if m and m.group(1) and _free_query(m.group(1).strip(), unsure):  # "play X on YouTube" from anywhere
             return play(m.group(1).strip(), None, browser)
         return None
 
@@ -182,11 +192,11 @@ def handle(text: str, browser) -> str | None:
     m = _PLAY_SEARCH.match(t)
     if m:
         query = (m.group(1) or m.group(2)).strip()
-        if query not in ("it", "this", "the video", "video", "youtube", "that"):
+        if _free_query(query, unsure) and query not in ("the video", "video", "youtube"):
             return play(query, hwnd, browser)
 
     m = _SEARCH.match(t)
-    if m:
+    if m and _free_query(m.group(1), unsure):
         desktop.address_bar(RESULTS_URL.format(q=quote_plus(m.group(1))))
         return f"Here are the YouTube results for {m.group(1)}."
     return None

@@ -101,7 +101,7 @@ class Assistant:
     def _handle(self, text: str, unsure: bool = False) -> tuple[str, str]:
         """Returns (who handled it, reply)."""
         # The main sites first: common actions there are done in code, instantly, with no AI.
-        site = sites.handle(text, self.skills.browser)
+        site = sites.handle(text, self.skills.browser, unsure)
         if site:
             self.brain.remember(text, site[1])
             return site
