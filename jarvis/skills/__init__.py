@@ -102,6 +102,23 @@ _REPEATS = re.compile(r"\b(twice|thrice|\d+ times|every|all|each)\b")
 OPEN_ENDED_ACTIONS = 3
 
 
+# "lines 7, 8, and 9" is one list, not three requests (27 Sep: it became a budget of 7 actions).
+_NUMBER_LIST = re.compile(r"(\d)\s*(?:,\s*(?:and\s+)?|\s+and\s+)(?=\d)")
+
+
+def request_parts(request: str) -> list[str]:
+    """The separate things a request asks for: "open YouTube and play lofi" -> 2 parts."""
+    text = _NUMBER_LIST.sub(r"\1 ", request or "")
+    return [p for p in (normalize(part) for part in _PARTS.split(text)) if p]
+
+
+# Apps Jarvis never types, clicks or presses keys into (process names, as front_window() shows them).
+OFF_LIMITS_APPS = ("vmware", "vmplayer", "vmware-vmx", "virtualbox", "virtualboxvm")
+
+# Opening things: at most one per part of the request (27 Sep: "open notifications" launched Action Center twice).
+LAUNCHES = {"open_app", "open_website", "open_chrome", "open_path", "show_in_explorer"}
+
+
 def action_budget(request: str, open_ended: int = OPEN_ENDED_ACTIONS) -> int:
     """How many hands-on actions (clicks, drags, typing, key presses) a request asks for.
 
@@ -109,10 +126,7 @@ def action_budget(request: str, open_ended: int = OPEN_ENDED_ACTIONS) -> int:
     anything open-ended = `open_ended` per part. "X and Y" adds the parts up.
     """
     total = 0
-    for part in _PARTS.split(request or ""):
-        part = normalize(part)
-        if not part:
-            continue
+    for part in request_parts(request):
         if _REPEATS.search(part):
             total += open_ended
         elif _ONE_ACTION.search(part):
@@ -179,6 +193,7 @@ class Skills:
         self.screen_fresh = False  # a screenshot was taken and nothing has changed the screen since
         self._element: elements.Element | None = None  # what click_element is about to click
         self.budget: int | None = None  # hands-on actions this request may still take (None = no limit)
+        self.launches: int | None = None  # apps/sites/files this request may still open
         self.on_tool: Callable[[str], None] = lambda name: None  # the assistant uses this to update the tray icon
         step = config["volume"]["step"]
 
@@ -296,6 +311,14 @@ class Skills:
         ]
         self.tools = {t.name: t for t in tools}
 
+    def _off_limits(self) -> bool:
+        """Never type, click or press keys into a virtual machine (the user's Kali in VMware): keys would go
+        to a different computer. Opening and switching apps is still fine."""
+        try:
+            return desktop.front_window().lower().startswith(OFF_LIMITS_APPS)
+        except Exception:
+            return False
+
     def _press(self, combo: str, times: int = 1) -> str:
         try:
             refusal, _ = keys.check(combo, desktop.front_window())
@@ -381,6 +404,14 @@ class Skills:
                 return ("Not done: the user didn't ask for more actions than you've already taken. Stop and "
                         "report what happened; if something is still needed, ask the user first.")
             self.budget -= 1
+        if name in LAUNCHES and self.launches is not None:
+            if self.launches <= 0:
+                log.info("Blocked %s(%s): already opened what was asked", name, args)
+                return ("Not done: you already opened something for this request. If it's the wrong thing, say "
+                        "so and ask the user; don't open more.")
+            self.launches -= 1
+        if name in _HANDS | {"scroll", "hover"} and self._off_limits():
+            return "Not allowed: the window in front (a virtual machine) is off-limits; I never control it."
         log.info("Tool %s(%s)", name, args)
         self.calls_made += 1
         # The browser's scroll actions use the mouse too, so show them as mouse use.

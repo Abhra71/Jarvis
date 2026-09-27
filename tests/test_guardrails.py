@@ -169,3 +169,48 @@ class SecretsTest(unittest.TestCase):
                 s.snapshot()
         shot.assert_not_called()
         items.assert_not_called()
+
+
+class VoiceTestFixesTest(unittest.TestCase):
+    """Fixes from the 27 Sep live voice test."""
+
+    def test_number_lists_are_one_request(self):
+        from jarvis.skills import action_budget, request_parts
+        self.assertEqual(len(request_parts("select the lines 7, 8, and 9 in my current window")), 1)
+        self.assertEqual(action_budget("select the lines 7, 8, and 9"), 1)
+        self.assertEqual(len(request_parts("open youtube and play lofi")), 2)
+
+    def test_opening_twice_is_blocked(self):
+        s = _skills()
+        s.launches = 1
+        s.apps.open.return_value = "Opening it."
+        self.assertEqual(s.call("open_app", {"name": "action center"}), "Opening it.")
+        self.assertTrue(s.call("open_app", {"name": "notification center"}).startswith("Not done"))
+
+    def test_status_only_for_short_questions(self):
+        from jarvis import nlu
+        self.assertEqual(nlu.parse("which AI are you using").name, "ai_status")
+        long = "replace it with a comment saying only Google and Groq AI services are used for now"
+        intent = nlu.parse(long)
+        self.assertFalse(intent and intent.name == "ai_status")
+
+    def test_never_types_into_a_virtual_machine(self):
+        s = _skills()
+        with mock.patch("jarvis.skills.desktop.front_window", return_value="vmware: Kali Linux - VMware Workstation"), \
+                mock.patch("jarvis.skills.keys.keyboard.send_keys") as send:
+            self.assertTrue(s.call("press_key", {"key": "enter"}).startswith("Not allowed"))
+            self.assertTrue(s.call("type_text", {"text": "ls"}).startswith("Not allowed"))
+        send.assert_not_called()
+        s.apps.open.return_value = "Opening Chrome."
+        with mock.patch("jarvis.skills.desktop.front_window", return_value="vmware: Kali"):
+            self.assertEqual(s.call("open_app", {"name": "chrome"}), "Opening Chrome.")  # switching away is fine
+
+    def test_groq_retries_a_malformed_tool_call(self):
+        from jarvis.groq_backup import GroqBackup
+        bad = mock.Mock(status_code=400, text='{"error":{"code":"tool_use_failed"}}', headers={})
+        good = mock.Mock(status_code=200, headers={}, json=lambda: {"choices": [{"message": {"content": "Hi."}}]})
+        http = mock.Mock()
+        http.post.side_effect = [bad, good]
+        g = GroqBackup("k", {"groq_models": ["fast"]}, http)
+        self.assertEqual(g._complete(["fast"], {})["content"], "Hi.")
+        self.assertEqual(http.post.call_args.kwargs["json"]["model"], "fast")  # same model, once more

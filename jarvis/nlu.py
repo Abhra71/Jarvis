@@ -146,8 +146,11 @@ def parse(raw: str) -> Intent | None:
     # Jarvis's own AI status (works offline)
     if re.search(r"\b(open|show)\b.*\b(dashboard|status page)\b", text):
         return Intent("open_dashboard")
-    if re.search(r"\b(ai|model|models)\b.*\b(status|usage|using|used|left|limit|limits)\b", text) \
-            or re.search(r"\bwhich (ai|model)\b", text) or text in ("status", "ai status", "jarvis status"):
+    # Only short questions about Jarvis's own AI: on 27 Sep "…only Google and Groq AI services are used"
+    # (an instruction for a file) matched and read the status out instead.
+    if len(text.split()) <= 8 and (
+            re.search(r"\b(ai|model|models)\b.*\b(status|usage|using|used|left|limit|limits)\b", text)
+            or re.search(r"\bwhich (ai|model)\b", text)) or text in ("status", "ai status", "jarvis status"):
         return Intent("ai_status")
 
     # Timer

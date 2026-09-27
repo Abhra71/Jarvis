@@ -68,11 +68,18 @@ class GroqBackup:
         self.models = cfg.get("groq_models", DEFAULT_MODELS)
         self.vision_model = cfg.get("groq_vision_model") or None
         self.http = http
+        # Groq counts max_tokens against its 8k tokens/minute up front, so ask only for what a reply needs
+        # (1024 used up the minute after a few requests on 27 Sep).
+        self.max_tokens = cfg.get("groq_max_tokens", 400)  # gpt-oss also spends some on thinking; ~125 is typical
 
     def _complete(self, models: list[str], body: dict) -> dict:
         """Try each model in turn until one isn't rate-limited, busy, or retired."""
         last = ""
-        for model in models:
+        # A malformed tool call (400 "tool_use_failed" / "tool call validation failed") is the model's slip,
+        # not an outage: ask the same model once more, then the next one (27 Sep: 3 turns fell to slow Gemini).
+        queue = [(m, 0) for m in models]
+        while queue:
+            model, tries = queue.pop(0)
             if len(models) > 1 and usage.is_limited(f"groq:{model}"):
                 continue  # hit its per-minute limit moments ago; don't waste a request
             t0 = time.monotonic()
@@ -98,6 +105,10 @@ class GroqBackup:
                 return r.json()["choices"][0]["message"]
             last = f"{model} {r.status_code}: {r.text[:150]}"
             log.warning("Groq %s", last)
+            if r.status_code == 400 and "tool" in r.text.lower():
+                if tries == 0:
+                    queue.insert(0, (model, 1))
+                continue
             if r.status_code not in (404, 429, 500, 503):  # 404: model retired, try the next
                 break
         raise RuntimeError(f"Groq failed ({last})")
@@ -126,7 +137,8 @@ class GroqBackup:
         done: list[str] = []  # steps carried out, for a hand-over to an AI that can see
         t0 = time.monotonic()
         for _ in range(max_steps):
-            msg = self._complete(models, {"messages": messages, "tools": tools(), "temperature": 0.4, "max_tokens": 1024})
+            msg = self._complete(models, {"messages": messages, "tools": tools(), "temperature": 0.4,
+                                           "max_tokens": self.max_tokens})
             calls = msg.get("tool_calls") or []
             messages.append({k: v for k, v in msg.items() if k in ("role", "content", "tool_calls") and v is not None})
             if not calls:

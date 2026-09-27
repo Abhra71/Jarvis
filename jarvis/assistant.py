@@ -163,7 +163,7 @@ class Assistant:
             return "I need a Gemini key for that. Put it in the dot env file in my folder."
         reason = str(e)
         if "both" in reason:
-            return "Both Gemini and the backup AI are unavailable right now. Simple commands like volume, timers and opening apps still work."
+            return "The main AI and the backup are both used up for now. Everyday commands still work without them."
         if "limit" in reason:
             return "I've hit the free AI limit for now. Simple commands still work."
         if "key" in reason:

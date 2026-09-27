@@ -17,7 +17,7 @@ import httpx
 from . import router
 from .config import ROOT
 from .groq_backup import GroqBackup, NeedsVision
-from .skills import Skills, action_budget, desktop, elements, mouse, shortcuts
+from .skills import Skills, action_budget, desktop, elements, mouse, request_parts, shortcuts
 from .skills import volume
 from .usage import usage
 
@@ -237,6 +237,7 @@ class Brain:
         self.groq = None
         self.answered_by = None  # "gemini" or "groq", for the usage stats
         self.gemini_slow_until = 0.0  # while in the future, Groq is asked first
+        self.on_backup = False        # announced that the backup AI is answering
         self.kind = "action"          # router.classify() of the current request
         self.request = ""             # the current request's words
         self.extra_groups: set[str] = set()  # tool groups the AI asked for with more_tools
@@ -399,6 +400,7 @@ class Brain:
             volume.mute(False)
         # Hands-on actions (clicks, typing…) are capped at what was asked; enforced in Skills.call.
         self.skills.budget = action_budget(text, self.cfg.get("open_ended_actions", 3))
+        self.skills.launches = max(1, len(request_parts(text)))
         self.kind, self.request, self.extra_groups = router.classify(text), text, set()
         log.info("Request kind: %s", self.kind)
         if unsure:
@@ -432,6 +434,7 @@ class Brain:
         finally:
             self.skills.confirmed = False
             self.skills.budget = None
+            self.skills.launches = None
 
     def _just_asked(self) -> bool:
         """Did Jarvis's last reply end with a question?"""
@@ -465,6 +468,13 @@ class Brain:
                 else:
                     reply = self._ask_gemini(text, handoff)
                 self.answered_by = provider
+                if last is not None and not self.on_backup:
+                    # The user wants to know when Jarvis leans on the backup (27 Sep). Said once per switch.
+                    self.on_backup = True
+                    usage.set_activity(f"Main AI unavailable; using {provider} as the backup")
+                    return f"The main AI is busy, so I'm using the backup. {reply}"
+                if last is None and i == 0:
+                    self.on_backup = False
                 return reply
             except NeedsVision as e:
                 # Groq can't see. Hand the request, and what it already did, to Gemini.
