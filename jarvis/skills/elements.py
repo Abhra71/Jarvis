@@ -166,6 +166,17 @@ def click(el: Element, double: bool = False) -> str:
     return f"Clicked the {el.name[:MAX_NAME]} {el.kind}."
 
 
+def focused_kind() -> str:
+    """What has the keyboard focus: 'field' (you can type), 'document', 'button'… (for the agent's checks)."""
+    UIA, uia = desktop._uia()
+    el = uia.GetFocusedElement()
+    if not el:
+        return "none"
+    ids = {getattr(UIA, f"UIA_{k}ControlTypeId"): v for k, v in _KINDS.items()}
+    ids[UIA.UIA_DocumentControlTypeId] = "document"
+    return ids.get(el.CurrentControlType, "other")
+
+
 def front_is_browser() -> bool:
     try:
         return desktop._process_name(win32gui.GetForegroundWindow()) in desktop.BROWSERS

@@ -28,6 +28,10 @@ groq_models = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]
 # Which AI goes first for each kind of request (router.py decides the kind). Defaults:
 # screen/live -> Gemini first; chat/action/files -> Groq first. To change, add a section at the end of
 # this file, e.g.  [ai.routing]  then  action = ["gemini", "groq"]
+# The agent core (jarvis/agent, 29 Sep): one AI call plans the whole task, then every step is done and CHECKED
+# in code (no screenshots), with one repair and then one clear question. Anything that must see pictures still
+# goes to the old loop below. false = the old tool-by-tool loop only.
+agent_mode = true
 max_steps = 14               # max AI round-trips per request (look -> click -> look ... needs several)
 history_minutes = 5          # forget the conversation after this much silence
 history_turns = 10

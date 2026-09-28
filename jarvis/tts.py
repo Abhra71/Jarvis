@@ -111,6 +111,11 @@ class Speaker:
                     log.warning("edge-tts failed (%s), using offline voice", e)
             self._say_offline(text)
 
+    def say_async(self, text: str):
+        """Say it without waiting (the agent's "Opening WhatsApp…" while it works). The lock keeps the order:
+        the final reply still comes after this line, never over it."""
+        threading.Thread(target=self.say, args=(text,), name="say-async", daemon=True).start()
+
     def _edge_audio(self, text: str) -> np.ndarray:
         async def fetch() -> bytes:
             mp3 = bytearray()

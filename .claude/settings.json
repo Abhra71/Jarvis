@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/python -m unittest:*)",
+      "Bash(.venv/Scripts/python tools/:*)",
+      "Bash(.venv/Scripts/python -c:*)",
+      "Bash(cd /c/Syntax_Assembler/Jarvis && .venv/Scripts/python:*)",
+      "Bash(cd /c/Syntax_Assembler/Jarvis && git:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
+    ]
+  }
+}

@@ -63,6 +63,8 @@ class Assistant:
         self.skills = Skills(config, announce=self.speaker.say)
         self.brain = Brain(config.get("ai", {}), self.skills)
         self.skills.on_tool = self._on_tool
+        if self.brain.agent:
+            self.brain.agent.narrate = self.speaker.say_async  # short updates while a plan runs
         self.dashboard_url = None
         self.stt = None
         self.wake = None

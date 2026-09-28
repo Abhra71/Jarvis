@@ -15,6 +15,7 @@ from datetime import datetime
 import httpx
 
 from . import abilities, router
+from .agent.run import Agent
 from .config import ROOT
 from .groq_backup import GroqBackup, NeedsVision
 from .skills import Skills, action_budget, desktop, elements, mouse, request_parts, shortcuts
@@ -114,6 +115,10 @@ _YES = re.compile(r"^\s*(yes|yeah|yep|yup|sure|ok|okay|go ahead|do it|confirm|co
 
 def _is_yes(text: str) -> bool:
     return bool(_YES.search(text or ""))
+
+
+_NO = re.compile(r"^\s*(no|nope|nah|don'?t|do not|cancel|stop|never ?mind|leave it|not now)\b", re.I)
+_AGENT_KINDS = ("action", "screen", "files")  # chat and live questions are answered, not planned
 _FAILURE_WORDS = ("doesn't exist", "isn't a", "couldn't find", "won't overwrite", "already exists", "don't see",
                   "may not have worked")
 
@@ -242,6 +247,9 @@ class Brain:
         self.request = ""             # the current request's words
         self.extra_groups: set[str] = set()  # tool groups the AI asked for with more_tools
         self.turn_calls: list[tuple] = []     # (tool, args, result) this request, for phrase memory
+        # The agent core (jarvis/agent): plan, check every step, repair once, ask. The old tool-by-tool loop
+        # below stays for what it can't do (anything that needs to see pictures) and as the fallback.
+        self.agent = Agent(skills, self._think) if cfg.get("agent_mode") else None
         if not self.available:
             log.warning("No GEMINI_API_KEY or GROQ_API_KEY in .env: AI features are off, offline commands still work")
 
@@ -279,6 +287,8 @@ class Brain:
         self.history += [{"role": "user", "parts": [{"text": user_text}]},
                          {"role": "model", "parts": [{"text": reply}]}]
         self.last_turn = time.monotonic()
+        if self.agent:
+            self.agent.heard(user_text, reply)
 
     def _system_prompt(self, text: str = "") -> str:
         front = windows = ""
@@ -348,8 +358,8 @@ class Brain:
         finally:
             pool.shutdown(wait=False, cancel_futures=True)
 
-    def _generate(self, contents: list[dict]) -> dict:
-        body = {
+    def _generate(self, contents: list[dict], body: dict | None = None) -> dict:
+        body = body or {
             "system_instruction": {"parts": [{"text": self._system_prompt(self.request)}]},
             "contents": contents,
             "tools": [{"functionDeclarations": self._declarations()}],
@@ -415,20 +425,25 @@ class Brain:
         self.skills.confirmed = _is_yes(text) and self._just_asked()
         self.skills.screen_fresh = False  # time has passed since any earlier screenshot
         self.screen_items = ""  # the on-screen items as text, when that's enough (no screenshot needed)
-        if self.kind == "screen" and not router.needs_eyes(text):
-            items = self._call("page_elements", {})
-            if isinstance(items, str) and items.startswith("[1]"):
-                self.screen_items = items
-        elif self.kind == "action" and router.thing_named(text) and elements.front_is_browser():
-            # "Open chemistry" on the PW page means the Chemistry link on screen, not an app. One quick
-            # read (~0.05 s) tells which.
-            items = self._call("page_elements", {})
-            if isinstance(items, str) and items.startswith("[1]") and elements.mentions(router.thing_named(text)):
-                self.kind, self.screen_items = "screen", items
-                log.info("%r is on screen: handling it as a screen request", router.thing_named(text))
         try:
+            reply = self._agent_turn(text, unsure)
+            if reply is not None:
+                return reply
+            if self.kind == "screen" and not router.needs_eyes(text):
+                items = self._call("page_elements", {})
+                if isinstance(items, str) and items.startswith("[1]"):
+                    self.screen_items = items
+            elif self.kind == "action" and router.thing_named(text) and elements.front_is_browser():
+                # "Open chemistry" on the PW page means the Chemistry link on screen, not an app. One quick
+                # read (~0.05 s) tells which.
+                items = self._call("page_elements", {})
+                if isinstance(items, str) and items.startswith("[1]") and elements.mentions(router.thing_named(text)):
+                    self.kind, self.screen_items = "screen", items
+                    log.info("%r is on screen: handling it as a screen request", router.thing_named(text))
             self.turn_calls = []  # the up-front screen read above doesn't count
             reply = self._ask_any(text)
+            if self.agent:
+                self.agent.heard(text, reply)
             self._learn(text, unsure)
             return reply
         except mouse.UserTookOver:
@@ -441,6 +456,58 @@ class Brain:
             self.skills.confirmed = False
             self.skills.budget = None
             self.skills.launches = None
+
+    def _agent_turn(self, text: str, unsure: bool) -> str | None:
+        """The agent core's reply, or None when the old loop should handle this request (it needs eyes,
+        it's a question, or no usable plan came back)."""
+        agent = self.agent
+        if not agent:
+            return None
+        if agent.has_pending():  # Jarvis just asked "Shall I send it?"
+            if self.skills.confirmed:
+                return self._agent_done(text, agent.resume())
+            agent.drop_pending()
+            if _NO.search(text):
+                return self._agent_done(text, "Okay, I won't.")
+        if self.kind not in _AGENT_KINDS or (self.kind == "screen" and router.needs_eyes(text)):
+            return None
+        calls_before = self.skills.calls_made
+        try:
+            reply = agent.run(text, unsure)
+        except BrainUnavailable:
+            if self.skills.calls_made != calls_before:
+                raise
+            return None
+        return None if reply is None else self._agent_done(text, reply)
+
+    def _agent_done(self, text: str, reply: str) -> str:
+        self.answered_by = "agent"
+        self.remember(text, reply)
+        return reply
+
+    def _think(self, system: str, user: str) -> str:
+        """One plain JSON answer for the agent (its plan): Groq first (~1 s), Gemini as the fallback."""
+        problems = []
+        if self.groq:
+            try:
+                return self.groq.complete(system, user)
+            except (httpx.HTTPError, RuntimeError, KeyError) as e:
+                log.warning("Groq couldn't plan: %s", e)
+                problems.append(f"groq: {e}")
+        if self.key:
+            body = {"system_instruction": {"parts": [{"text": system}]},
+                    "contents": [{"role": "user", "parts": [{"text": user}]}],
+                    "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json",
+                                         "maxOutputTokens": 1024}}
+            try:
+                data = self._generate([], body)
+            except httpx.HTTPError as e:
+                raise BrainUnavailable(str(e)) from e
+            cands = data.get("candidates") or []
+            if cands and "content" in cands[0]:
+                return " ".join(p.get("text", "") for p in cands[0]["content"].get("parts", []) if not p.get("thought"))
+            problems.append("gemini: empty answer")
+        raise BrainUnavailable("; ".join(problems) or "no AI available")
 
     def _learn(self, text: str, unsure: bool):
         """If the AI did this request with exactly one built-in ability, remember the phrasing so it's

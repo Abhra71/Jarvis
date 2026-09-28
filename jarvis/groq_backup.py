@@ -110,13 +110,22 @@ class GroqBackup:
                 return r.json()["choices"][0]["message"]
             last = f"{model} {r.status_code}: {r.text[:150]}"
             log.warning("Groq %s", last)
-            if r.status_code == 400 and "tool" in r.text.lower():
+            if r.status_code == 400 and ("tool" in r.text.lower() or "json_validate" in r.text.lower()):
                 if tries == 0:
                     queue.insert(0, (model, 1))
                 continue
             if r.status_code not in (404, 429, 500, 503):  # 404: model retired, try the next
                 break
         raise RuntimeError(f"Groq failed ({last})")
+
+    def complete(self, system: str, user: str, max_tokens: int = 900) -> str:
+        """One plain JSON answer, no tools (the agent's plan). Low reasoning effort: planning from a list of
+        tools and the screen as text doesn't need long thinking, and thinking tokens count against the limit."""
+        msg = self._complete(self.models, {
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "temperature": 0.2, "max_tokens": max_tokens, "response_format": {"type": "json_object"},
+            "reasoning_effort": "low"})
+        return msg.get("content") or ""
 
     def ask(self, system: str, history: list[dict], text: str, declarations,
             call_tool, max_steps: int = 6, finish=None, context: str = "") -> tuple[str, list[dict]]:

@@ -4,4 +4,5 @@ logs/
 models/
 .env
 data/learned.json
+data/plans.json
 *.bin
