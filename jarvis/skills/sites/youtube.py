@@ -168,6 +168,34 @@ def _free_query(query: str, unsure: bool) -> bool:
     return bool(query) and not unsure and not _CONTEXT.search(query)
 
 
+def understands(text: str, unsure: bool = False) -> bool:
+    """Is this a YouTube command the pack can do in code? (No screen reading: for the agent's code plans.)"""
+    t = normalize(text)
+    m = _NTH.match(t)
+    if m and (m.group(1) in _ORDINALS or m.group(1) in _NUMBERS):
+        return True
+    if any(p.search(t) for p, *_ in _CONTROLS):
+        return True
+    m = _SEEK.search(t)
+    if m and (m.group(3) or m.group(1) in ("forward", "ahead", "rewind")):
+        return True
+    if re.search(r"\b(faster|speed up|slower|slow down)\b", t):
+        return True
+    m = _PLAY_SEARCH.match(t)
+    query = m and (m.group(1) or m.group(2) or "").strip()
+    return bool(query) and _free_query(query, unsure) and query not in ("the video", "video", "youtube")
+
+
+def command(text: str, browser) -> str:
+    """The agent's `youtube` tool: one command, done by the pack, or why not."""
+    t = text.strip()
+    if re.match(r"^(play|put on|listen to|watch)\b", t, re.I) and not re.search(r"\byoutube\b", t, re.I) \
+            and not _NTH.match(normalize(t)):
+        t += " on youtube"  # "play lofi" means search and play, wherever you are
+    return handle(t, browser) or ("Not done: the YouTube pack can't do that here (is YouTube in front?). "
+                                  "Use press_key with YouTube's shortcuts or click_element.")
+
+
 def handle(text: str, browser, unsure: bool = False) -> str | None:
     """Reply if this is a YouTube command we can do in code, else None (the AI takes it)."""
     t = normalize(text)

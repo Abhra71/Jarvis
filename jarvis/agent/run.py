@@ -14,7 +14,8 @@ from typing import Callable
 from ..skills import LAUNCHES, shortcuts
 from . import checks
 from .context import Memory, Readers, take
-from .plan import NeedsEyes, Plan, PlanError, PlanMemory, Step, code_plan, parse, planning_prompt, repair_prompt
+from .plan import (LOOK_AGAIN, NeedsEyes, Plan, PlanError, PlanMemory, Step, code_plan, continue_prompt, parse,
+                   planning_prompt, repair_prompt)
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +23,8 @@ log = logging.getLogger(__name__)
 WAIT_LAUNCH = 5.0
 WAIT_STEP = 1.5
 POLL = 0.25
+SETTLE = 0.6      # before a look_again: let the page finish changing
+MAX_LOOKS = 3     # look_agains per request (each is one quick AI call)
 PENDING_MINUTES = 5
 
 _FAILURE_STARTS = ("error", "not allowed", "not done", "not clicked", "unknown", "no ", "i couldn't", "i don't",
@@ -114,7 +117,7 @@ class Agent:
 
     def _run(self, text: str, unsure: bool, out: Outcome) -> str | None:
         snap = self._snap()
-        plan = code_plan(text) or (None if unsure else self.memory.get(text, self.tools))
+        plan = code_plan(text, snap.front, unsure) or (None if unsure else self.memory.get(text, self.tools))
         if not plan:
             if not self.think:
                 out.result = "fallback"
@@ -150,10 +153,31 @@ class Agent:
 
     def _execute(self, request: str, plan: Plan, out: Outcome, repaired: bool = False,
                  remember: bool = True) -> str:
-        steps, done, executed, narrated, i = list(plan.steps), [], [], 0, 0
+        steps, done, executed, results, narrated, looks, i = list(plan.steps), [], [], [], 0, 0, 0
         reply = plan.reply
         while i < len(steps):
             step = steps[i]
+            if step.tool == LOOK_AGAIN:
+                # Like a person: the page changed, so look (as text) and decide the next clicks from what's there.
+                looks += 1
+                if looks > MAX_LOOKS or not self.think:
+                    return self._stuck(out, executed, "it's taking too many steps to find the way.")
+                self.sleep(SETTLE)
+                snap = self._snap()
+                system, user = continue_prompt(request, self.tools, done, snap.text(),
+                                               shortcuts.for_window(snap.front, request))
+                try:
+                    more = parse(self._think(out, system, user), self.tools)
+                except NeedsEyes:
+                    return self._stuck(out, executed, "the next part needs me to see pictures on the screen.")
+                except PlanError as e:
+                    return self._stuck(out, executed, "I couldn't work out the next step.", str(e))
+                if more.ask and not more.steps:
+                    out.steps, out.result = len(executed), "asked"
+                    return more.ask
+                steps = steps[:i] + more.steps
+                reply = more.reply or reply
+                continue
             if step.say and len(steps) > 1 and narrated < 2:
                 narrated += 1
                 self.narrate(step.say)
@@ -168,6 +192,7 @@ class Agent:
             why = result if looks_failed(result) else self._verify(step)
             if why is None:
                 executed.append(step)
+                results.append(result)
                 done.append(f"{step.label()} -> {result}")
                 self._note_object(step)
                 i += 1
@@ -193,7 +218,8 @@ class Agent:
         out.steps, out.result = len(executed), "done"
         if remember and plan.source != "code" and (plan.source == "ai" or repaired):
             self.memory.learn(request, executed, reply)
-        return reply or " ".join(done[-1].split(" -> ", 1)[1:]) or "Done."
+        # Code plans have no written reply: say what each step reported ("Playing Lofi Girl. Full screen.").
+        return reply or " ".join(results[-3:]) or "Done."
 
     def _verify(self, step: Step) -> str | None:
         """None if the step's check came true (waiting a little for apps to appear), else why not."""

@@ -28,6 +28,9 @@ EYES_TOOLS = {"look_at_screen", "click", "click_pair", "hover"}
 # Not for plans: the AI's own helpers.
 _HIDDEN = {"more_tools", "page_elements"} | EYES_TOOLS
 MAX_STEPS = 12
+# Not a tool: "now look at the new screen (as text) and plan the rest". For steps that depend on what a page
+# or app shows next (search results, a site's menus): a person looks, then clicks.
+LOOK_AGAIN = "look_again"
 
 
 class PlanError(ValueError):
@@ -97,6 +100,8 @@ def _step(d: dict, tools: dict) -> Step:
         name = "do"
     if name in EYES_TOOLS:
         raise NeedsEyes(name)
+    if name in (LOOK_AGAIN, "look", "next", "replan"):
+        return Step(LOOK_AGAIN, {})
     if name not in tools or name in _HIDDEN:
         raise PlanError(f"unknown tool {name!r}")
     clean, problem = check_args(tools[name], args)
@@ -128,18 +133,25 @@ def parse(raw, tools: dict, source: str = "ai") -> Plan:
 
 # ---- plans made in code --------------------------------------------------------
 
-def code_plan(text: str) -> Plan | None:
-    """'snap left and maximise' -> two abilities, no AI. Only when *every* part is an ability."""
+def code_plan(text: str, front: str = "", unsure: bool = False) -> Plan | None:
+    """'snap left and maximise', 'play lofi on YouTube and make it full screen', 'pause, back 30 seconds and
+    subtitles on' -> steps done in code, no AI. Only when *every* part is an ability or a YouTube command."""
+    from ..skills.sites import youtube
+
     parts = request_parts(text)
     if len(parts) < 2:
-        return None  # one part: abilities.handle already had its chance before the AI
+        return None  # one part: the site packs and abilities.handle already had their chance before the AI
+    on_youtube = "youtube" in normalize(text) or youtube.is_front(front)
     steps = []
     for part in parts:
         hit = abilities.match(part)
-        if not hit:
+        if hit:
+            ab, value = hit
+            steps.append(Step("do", {"ability": ab.name, **({"value": value} if value else {})}))
+        elif on_youtube and youtube.understands(part, unsure):
+            steps.append(Step("youtube", {"command": part}))
+        else:
             return None
-        ab, value = hit
-        steps.append(Step("do", {"ability": ab.name, **({"value": value} if value else {})}))
     return Plan(steps, source="code")
 
 
@@ -257,6 +269,19 @@ def planning_prompt(request: str, tools: dict, screen: str, recent: str, shortcu
     user.append(f"Screen now:\n{screen}")
     if shortcuts:
         user.append(f"Shortcuts here: {shortcuts}")
+    return system, "\n".join(user)
+
+
+def continue_prompt(request: str, tools: dict, done: list[str], screen: str, shortcuts: str) -> tuple[str, str]:
+    """After a look_again: plan the rest from the screen as it is now."""
+    system = SYSTEM + catalog(tools)
+    user = [f"Request: {request}",
+            "Done so far (don't repeat): " + ("; ".join(done) or "nothing"),
+            f"Screen now:\n{screen}"]
+    if shortcuts:
+        user.append(f"Shortcuts here: {shortcuts}")
+    user.append('Return the REMAINING steps as {"steps": [...], "reply": "..."}; {"steps": [], "reply": "..."} if '
+                'it\'s already done; or {"ask": "<one specific question>"}.')
     return system, "\n".join(user)
 
 

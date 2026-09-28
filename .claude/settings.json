@@ -1,17 +1,38 @@
 {
   "permissions": {
     "allow": [
-      "Bash(.venv/Scripts/python -m unittest:*)",
-      "Bash(.venv/Scripts/python tools/:*)",
-      "Bash(.venv/Scripts/python -c:*)",
+      "Edit",
+      "Write",
+      "Read",
+      "Glob",
+      "Grep",
+      "TaskStop",
+      "Bash(.venv/Scripts/python:*)",
+      "Bash(timeout:*)",
       "Bash(cd /c/Syntax_Assembler/Jarvis && .venv/Scripts/python:*)",
+      "Bash(cd /c/Syntax_Assembler/Jarvis && timeout:*)",
       "Bash(cd /c/Syntax_Assembler/Jarvis && git:*)",
+      "Bash(cd /c/Syntax_Assembler/Jarvis && grep:*)",
+      "Bash(cd /c/Syntax_Assembler/Jarvis && sed -n:*)",
+      "Bash(cd /c/Syntax_Assembler/Jarvis && cat:*)",
+      "Bash(cd /c/Syntax_Assembler/Jarvis && ls:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(sed -n:*)"
+    ],
+    "deny": [
+      "Bash(rm:*)",
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(pip install:*)",
+      "Bash(cd /c/Syntax_Assembler/Jarvis && rm:*)"
     ]
   }
 }

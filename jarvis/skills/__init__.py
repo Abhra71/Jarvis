@@ -256,6 +256,11 @@ class Skills:
             Tool("close_tab_named", "Close a browser tab by its name/title, in any browser window.",
                  {"name": (S, "e.g. 'chess', 'YouTube'", True, None)},
                  lambda name: desktop.close_tab(name)),
+            Tool("youtube", "One YouTube command done in code (instant, exact): 'play <search words>' (plays the "
+                            "first real video), 'play the second video', pause, play, full screen, subtitles, "
+                            "back/forward 30 seconds, next video, mute, faster.",
+                 {"command": (S, "", True, None)},
+                 lambda command: self._youtube(command)),
             Tool("address_bar", "Type a URL or search words into the current tab's address bar + Enter.",
                  {"text": (S, "", True, None)},
                  lambda text: desktop.address_bar(text)),
@@ -332,6 +337,10 @@ class Skills:
             return keys.press(combo, times)
         except keys.BadKeys as e:
             return f"Not done: {e}. Examples: 'enter', 'ctrl+c', 'alt+tab', 'win+d', 'ctrl+k ctrl+s'."
+
+    def _youtube(self, command: str) -> str:
+        from .sites import youtube
+        return youtube.command(command, self.browser)
 
     def _click_element(self, double: bool) -> str:
         result = elements.click(self._element, double)
