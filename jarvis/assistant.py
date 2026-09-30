@@ -22,7 +22,8 @@ from .wakeword import WakeWordDetector
 log = logging.getLogger(__name__)
 
 _PLAY = re.compile(r"\b(play|listen to|put on|watch|resume)\b", re.I)
-_STOP = re.compile(r"(stop|cancel|never ?mind|forget it|leave it|that'?s all|nothing)( it| that)?( please)?( jarvis)?")
+_STOP = re.compile(r"(stop|cancel|never ?mind|forget it|leave it|that'?s all|nothing)( it| that)?"
+                   r"(,? (stop|cancel|nothing))*( please)?( jarvis)?")
 
 # Words that make an "open …" / "search …" request too rich for the offline rules.
 _NEEDS_AI = re.compile(r"\b(profile|account|tabs?|window|and|then|close|in my|on my|on youtube|on amazon)\b")

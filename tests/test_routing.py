@@ -194,8 +194,11 @@ class RoutingTest(unittest.TestCase):
         groq_http.post.return_value = _groq_msg({"role": "assistant", "content": "Nothing unusual."})
         b = _brain(_skills(), groq=self._groq(groq_http))
         b.http.post.return_value = mock.Mock(status_code=503, text="busy")
-        # The switch to the backup is announced once (the user asked for this, 27 Sep)…
-        self.assertEqual(b.ask("what's on my screen"), "The main AI is busy, so I'm using the backup. Nothing unusual.")
+        # The switch to the backup is shown once as a pop-up, never spoken (the user asked for this, 30 Sep)…
+        with mock.patch("jarvis.brain.popup") as popup:
+            self.assertEqual(b.ask("what's on my screen"), "Nothing unusual.")
+        popup.assert_called_once()
+        self.assertIn("answered by Groq", popup.call_args[0][0])
         self.assertEqual(b.answered_by, "groq")
         # …not on every reply while it lasts.
         self.assertEqual(b.ask("what's on my screen"), "Nothing unusual.")

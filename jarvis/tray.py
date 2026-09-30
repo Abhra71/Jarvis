@@ -65,6 +65,8 @@ def run_with_tray(assistant: Assistant):
         pystray.MenuItem("Quit", quit_),
     )
     assistant.on_state = on_state
+    from . import notify
+    notify.set_sink(lambda message, title: icon.notify(message, title))  # fallback pop-ups (never spoken)
 
     worker = threading.Thread(target=assistant.run, name="assistant", daemon=True)
     worker.start()

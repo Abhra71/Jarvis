@@ -84,6 +84,8 @@ class GpuHearing:
             self.ready.set()
         else:
             log.warning("GPU hearing unavailable, using the CPU: %s", msg.get("error"))
+            from .notify import popup
+            popup("Hearing: GPU model unavailable → CPU model", "hearing-cpu")
             self.failed = True  # e.g. no NVIDIA libraries: don't keep trying this session
             proc.kill()
 
@@ -95,6 +97,8 @@ class GpuHearing:
         # one (~0.65 s) and the GPU takes the next.
         if not self.ready.wait(self.load_wait) or not self.alive():
             log.info("GPU hearing still loading; the CPU takes this sentence")
+            from .notify import popup
+            popup("Hearing: GPU still loading → CPU model this time", "hearing-cpu-wait")
             return None
         proc = self.proc
         result: dict = {}
@@ -139,6 +143,7 @@ class CloudHearing:
         self.model, self.key, self.timeout = model, key, timeout
         self.http = httpx.Client(timeout=timeout)
         self.resting_until = 0.0
+        self.was_down = False
 
     def usable(self) -> bool:
         import time
@@ -167,9 +172,16 @@ class CloudHearing:
             log.warning("Cloud hearing failed (%s); the local model takes this sentence",
                         f"HTTP {status}" if status else type(e).__name__)
             self.resting_until = time.monotonic() + 60
+            self.was_down = True
+            from .notify import popup
+            popup("Hearing: cloud unavailable → local model", "hearing-local")
             return None
         segments = data.get("segments") or []
         log.info("Cloud hearing in %.2fs", time.monotonic() - t0)
+        if self.was_down:
+            self.was_down = False
+            from .notify import popup
+            popup("Hearing: back on the cloud (Groq Whisper)", "hearing-cloud")
         return {"text": (data.get("text") or "").strip(), "segments": len(segments),
                 "confidence": min((s.get("avg_logprob", 0.0) for s in segments), default=0.0),
                 "no_speech": max((s.get("no_speech_prob", 1.0) for s in segments), default=1.0)}

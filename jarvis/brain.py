@@ -20,6 +20,7 @@ from .config import ROOT
 from .groq_backup import GroqBackup, NeedsVision
 from .skills import Skills, action_budget, desktop, elements, mouse, request_parts, shortcuts
 from .skills import volume
+from .notify import popup
 from .usage import usage
 
 log = logging.getLogger(__name__)
@@ -388,6 +389,7 @@ class Brain:
                                meta.get("promptTokenCount", 0), meta.get("candidatesTokenCount", 0))
                 if model != self.models[0]:
                     log.info("Answered by fallback model %s", model)
+                    popup(f"Gemini {self.models[0]} busy → {model}", f"gemini-{model}")
                 return data
             usage.api_call("gemini", model, r.status_code, time.monotonic() - t0,
                            limited_for=_limit_seconds(r) if r.status_code == 429 else None)
@@ -513,6 +515,8 @@ class Brain:
             except (httpx.HTTPError, RuntimeError, KeyError) as e:
                 log.warning("Groq couldn't plan: %s", e)
                 problems.append(f"groq: {e}")
+                if self.key:
+                    popup("Groq unavailable → Gemini is planning", "plan-backup")
         if self.key:
             body = {"system_instruction": {"parts": [{"text": system}]},
                     "contents": [{"role": "user", "parts": [{"text": user}]}],
@@ -571,11 +575,14 @@ class Brain:
                     reply = self._ask_gemini(text, handoff)
                 self.answered_by = provider
                 if last is not None and not self.on_backup:
-                    # The user wants to know when Jarvis leans on the backup (27 Sep). Said once per switch.
+                    # The user wants to know when Jarvis leans on the backup (27 Sep), as a pop-up, never
+                    # spoken (30 Sep).
                     self.on_backup = True
                     usage.set_activity(f"Main AI unavailable; using {provider} as the backup")
-                    return f"The main AI is busy, so I'm using the backup. {reply}"
+                    popup(f"{chain[0].title()} unavailable → answered by {provider.title()}", "ai-backup")
                 if last is None and i == 0:
+                    if self.on_backup:
+                        popup(f"Back on {provider.title()}", "ai-main")
                     self.on_backup = False
                 return reply
             except NeedsVision as e:

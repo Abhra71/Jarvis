@@ -824,3 +824,26 @@ class CloudHearingTest(unittest.TestCase):
         with mock.patch.object(c.http, "post", return_value=reply):
             r = c.transcribe(np.zeros(16000, dtype=np.float32), "hint")
         self.assertEqual((r["text"], r["segments"], r["confidence"]), ("Open Khazana chemistry.", 1, -0.1))
+
+
+class PopupNoticeTest(unittest.TestCase):
+    """30 Sep: fallbacks are small pop-ups, never spoken, and not repeated within a minute."""
+
+    def test_shown_once_a_minute(self):
+        from jarvis import notify
+        shown = []
+        notify.set_sink(lambda m, t: shown.append(m))
+        notify._shown.clear()
+        try:
+            with mock.patch("jarvis.notify.threading.Thread") as thread:
+                thread.side_effect = lambda target, args, daemon: mock.Mock(start=lambda: target(*args))
+                notify.popup("Hearing: cloud unavailable → local model", "k")
+                notify.popup("Hearing: cloud unavailable → local model", "k")
+        finally:
+            notify.set_sink(None)
+        self.assertEqual(shown, ["Hearing: cloud unavailable → local model"])
+
+    def test_nothing_nothing_is_a_stop(self):
+        from jarvis import assistant
+        self.assertTrue(assistant._STOP.fullmatch("nothing nothing"))
+        self.assertTrue(assistant._STOP.fullmatch("nothing, nothing"))
