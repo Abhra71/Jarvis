@@ -47,6 +47,8 @@ Run the **whole PC by voice**: sit back and do ~99% of computer work reliably, f
 4. **Self-healing**: corrections, visible names, per-app notes (site notes Jarvis writes for itself: search address, pop-ups, menus), **pattern learning** ("search X on Amazon" learned once works for any X; approved 30 Sep), daily self-review, "forget that".
 5. **Chess** last.
 
+- **Phase 6 speed note (30 Sep):** every ability goes to the AI with every request (27 now, ~1,900 tokens per action request). Send only the ones that fit the screen (code abilities only with an editor in front, PW only on PW…).
+
 Report the % done at each phase end.
 
 ## How Jarvis works (request order)
