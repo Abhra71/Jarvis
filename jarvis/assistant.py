@@ -18,7 +18,7 @@ from . import coding
 from .skills import Skills, desktop, editors, elements, keys, request_parts, site_url, sites
 from .stt import Transcriber
 from .tts import Speaker
-from . import tasklog
+from . import corrections, tasklog
 from .usage import usage
 from .wakeword import WakeWordDetector
 
@@ -127,6 +127,9 @@ class Assistant:
         self.coding = False  # coding mode: speech -> code in BlueJ / VS Code
         self.gaming = False  # gaming mode: "Hey Jarvis" for every command (game sounds aren't commands)
         self.heard: dict | None = None  # how the current sentence was heard (for the task log)
+        self.corrections = corrections.Corrections()  # "No, I meant Claude": fixed now, and remembered
+        self.last_request = ""  # the last request handled (what a correction corrects)
+        self.fixed_request: str | None = None
         self.code_names: set[str] = set()  # variables written this session (VS Code doesn't show its code)
         self.last_code = ""  # the last code written (the same thing twice is a misunderstanding, not a request)
         self.dictated = ""  # the last piece typed, for "scratch that"
@@ -173,6 +176,9 @@ class Assistant:
         last_before = getattr(agent, "last", None)
         from .skills import mouse
         mouse.reset_takeover()  # every request starts fresh (30 Sep: a stale "you moved the mouse" crashed a turn)
+        corr = getattr(self, "corrections", None)
+        if corr:
+            text = corr.apply(text)  # mishearings the user corrected before ("Clawed" -> "Claude")
         try:
             route, reply = self._handle(text, unsure)
         except mouse.UserTookOver:
@@ -183,6 +189,9 @@ class Assistant:
         usage.end_turn(route, reply)
         log.info("Handled by %s", route)
         last_after = getattr(agent, "last", None)
+        if route not in ("dictation",):
+            self.last_request = getattr(self, "fixed_request", None) or text
+        self.fixed_request = None
         try:
             turn.finish(route, reply, last_after if last_after is not last_before else None)
         except Exception:
@@ -194,6 +203,24 @@ class Assistant:
         spoken = " ".join(text.lower().strip(" .!?,").split())
         if self.dictating:
             return "dictation", self._dictate(text, spoken)
+        corr = getattr(self, "corrections", None)
+        if corr and corrections.is_forget(text):
+            forgot = corr.forget_last()
+            agent = getattr(self.brain, "agent", None)
+            if agent and self.last_request:
+                agent.memory.forget(self.last_request)  # a plan remembered from it isn't trusted either
+            return "offline rules", f"Okay, I've forgotten that {forgot}." if forgot else "Okay."
+        fixed = corr.fix(getattr(self, "last_request", ""), text) if corr else None
+        if fixed:
+            # "No, I meant Claude." after "Open Clawed.": do "Open Claude." and remember the mishearing.
+            request, wrong = fixed
+            right = corrections.meant(text)
+            log.info("Correction: %r -> %r", self.last_request, request)
+            self.fixed_request = request
+            route, reply = self._handle(request, unsure=False)
+            if tasklog.classify(route, reply) not in ("failed", "stuck"):
+                corr.learn(wrong, right)
+            return route, reply
         if _GAMING_ON.fullmatch(spoken):
             self.gaming = True
             return "gaming", ("Gaming mode on. Say Hey Jarvis before each command. Start eFootball, close the game, "
@@ -426,7 +453,8 @@ class Assistant:
     def load_voice(self):
         self._set(State.LOADING)
         self.speaker.prepare()
-        self.stt = Transcriber(self.config["stt"], vocabulary=self.skills.apps.names_for_speech())
+        self.stt = Transcriber(self.config["stt"],
+                               vocabulary=self.corrections.words() + self.skills.apps.names_for_speech())
         self.wake = WakeWordDetector(self.config["wakeword"])
         self.mic = Mic(self.config["audio"]["sample_rate"], self.config["audio"]["input_device"])
 

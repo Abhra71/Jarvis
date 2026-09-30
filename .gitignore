@@ -8,3 +8,4 @@ data/plans.json
 data/popups.json
 data/pw.json
 *.bin
+data/corrections.json
