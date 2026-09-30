@@ -287,11 +287,55 @@ class PlanMemory:
 
 # ---- the planner prompt -----------------------------------------------------------
 
-def catalog(tools: dict) -> str:
-    """Every tool a plan may use, one short line each: 'open_app(name): Launch a desktop app.'"""
+# Which tools and abilities a request can need (1 Oct: every plan sent all 34 tools and 36 abilities, ~1,600
+# tokens, most of them for other kinds of work). Areas not named by the request or the front window are left out
+# of the first plan; a repair after a failure still sees everything.
+_AREAS = {
+    "code": re.compile(r"\b(code|coding|lines?|comment|uncomment|compile|run|class|bluej|blue j|blue jay|vs ?code|"
+                       r"visual studio|java|c\+\+|cpp|program|method|function|editor)\b"),
+    "files": re.compile(r"\b(files?|folders?|pdfs?|docs?|documents?|downloads?|desktop|pictures?|photos?|images?|"
+                        r"screenshots?|copy|move|rename|upload|attach|newest|latest|txt|notes?|drive|zip|excel|"
+                        r"word|ppt|presentation|resume|cv)\b"),
+    "mail": re.compile(r"\b(e-?mails?|mail|gmail|inbox|send|reply|draft)\b"),
+    "pw": re.compile(r"\b(pw|physics wallah|batch|khazana|lectures?|chemistry|physics|maths?|biology|botany|"
+                     r"zoology|study|teacher|sir|victory)\b"),
+    "games": re.compile(r"\b(games?|efootball|football|pes|gaming)\b"),
+    "system": re.compile(r"\b(bluetooth|wi-?fi|internet|brightness|bright|dim|night light|airplane|flight mode|hotspot|"
+                         r"battery saver|captions?|headphones?|earphones?|buds|rockerz|speaker|connect|disconnect|"
+                         r"switch|turn (on|off))\b"),
+    "youtube": re.compile(r"\b(youtube|videos?|songs?|music|play|pause|resume|watch|subtitles?|skip|ad|full ?screen|"
+                          r"lofi|playlist)\b"),
+}
+_FRONT_AREAS = {"code": re.compile(r"visual studio code|bluej|^code:|^java", re.I),
+                "files": re.compile(r"^explorer:", re.I), "mail": re.compile(r"gmail|inbox", re.I),
+                "pw": re.compile(r"physics wallah|pw\.live|\bpw\b", re.I), "youtube": re.compile(r"youtube", re.I)}
+_ABILITY_AREAS = {"code": "code", "files": "files", "upload": "files", "mail": "mail", "pw": "pw",
+                  "games": "games", "system": "system"}   # jarvis/abilities/<module> -> area; others always
+_TOOL_AREAS = {"youtube": "youtube", "find_files": "files", "list_folder": "files", "open_path": "files",
+               "show_in_explorer": "files", "create_folder": "files", "copy_file": "files", "move_file": "files",
+               "rename_file": "files", "read_text_file": "files", "write_text_file": "files"}
+
+
+def areas_for(request: str, front: str = "") -> set[str]:
+    """The areas this request (or the window in front) can need."""
+    t = normalize(request)
+    found = {a for a, rx in _AREAS.items() if rx.search(t)}
+    found |= {a for a, rx in _FRONT_AREAS.items() if rx.search(front or "")}
+    return found
+
+
+def _area_of(ab) -> str:
+    return _ABILITY_AREAS.get(ab.run.__module__.rsplit(".", 1)[-1], "")
+
+
+def catalog(tools: dict, areas: set[str] | None = None) -> str:
+    """The tools a plan may use, one short line each: 'open_app(name): Launch a desktop app.'
+    With `areas`, tools and abilities for other kinds of work are left out (see _AREAS)."""
     lines = []
     for t in tools.values():
         if t.name in _HIDDEN or t.name == "do":
+            continue
+        if areas is not None and _TOOL_AREAS.get(t.name, "") not in areas | {""}:
             continue
         args = []
         for pname, (_, _, required, enum) in t.params.items():
@@ -301,7 +345,8 @@ def catalog(tools: dict) -> str:
             args.append(a)
         desc = t.description.split(". ")[0].rstrip(".")
         lines.append(f"{t.name}({', '.join(args)}): {desc}")
-    ab = "; ".join(f"{a.name}{'(' + a.value_hint + ')' if a.value_hint else ''}" for a in abilities.REGISTRY.values())
+    shown = [a for a in abilities.REGISTRY.values() if areas is None or _area_of(a) in areas | {""}]
+    ab = "; ".join(f"{a.name}{'(' + a.value_hint + ')' if a.value_hint else ''}" for a in shown)
     lines.append(f'Abilities (instant, exact; step {{"do": "<name>", "args": {{"value": ...}}}}): {ab}')
     return "\n".join(lines)
 
@@ -318,20 +363,36 @@ Rules:
 - Apps: open_app (installed desktop app, the default; don't ask "desktop or web?") or window focus if it's already open. Never click desktop or taskbar icons.
 - click_element takes a name from "On screen" (or text read from the screen), or, right after opening something, the name you expect there. When the next clicks depend on a page that's still loading or changing (search results, a site's menus), put {"do": "look_again"} there: you'll see the new screen and plan the rest.
 - Abilities that take a value need it: {"do": "open_settings", "args": {"value": "bluetooth"}}. snap_left/right, maximize_front, minimize_front, other_screen act on the front window; to act on another, give its name as value.
-- Files and folders: short paths work ("Downloads", "Desktop/Trips", "Documents/cv.pdf"); never guess full paths or %USERNAME%.
 - web_search only to search the web. To open a site, or a page inside it, use open_website (its address), then look_again.
 - A request that goes deeper than the first page ("PW, my batch, chemistry"): open it, then {"do": "look_again"}; you'll see the page and continue. Don't stop at the first page.
 - If the tools can't finish it, do what they can and make "reply" say exactly what's done and what's left ("I opened Bluetooth settings; I can't connect headphones by myself yet.").
 - To type into a box: focus it first (its shortcut, or click_element on the field), then type_text.
-- If "A DIALOG BOX IS OPEN", answer it first (click its button, or press esc) before anything else.
 - "expect" = how to SEE that the step worked: something that changes because of it. "window: X" (front app/title), "open: X", "closed: X", "element: X" (a named item that appears), "not element: X" (one that goes away, e.g. a dialog's button after clicking it), "text: X", "focus: field", "url: X", "playing", "paused", "fullscreen", "not fullscreen", "not dialog". Never the item you just clicked, never a label you guess. "" when nothing visible changes (volume, timers, files); Jarvis then says it couldn't confirm.
-- Sending, posting, buying, deleting: include that step; Jarvis itself asks the user before doing it.
 - Do only what was asked. "It"/"that" = the recent context below.
 - "reply": the result in the user's words ("Playing it in full screen."), only what the steps really do.
 - "say" only on a slow first step the user will notice, 2-4 words ("Opening WhatsApp").
+- Sending, posting, buying, deleting: include that step; Jarvis itself asks the user before doing it.
 - Never type passwords or card numbers.
 Tools:
 """
+
+
+# Rules only some requests need (left out of the first plan when they can't apply, like the tools).
+_FILES_RULE = ('- Files and folders: short paths work ("Downloads", "Desktop/Trips", "Documents/cv.pdf"); never guess '
+               'full paths or %USERNAME%.\n')
+_DIALOG_RULE = '- If "A DIALOG BOX IS OPEN", answer it first (click its button, or press esc) before anything else.\n'
+
+
+def system_for(tools: dict, areas: set[str] | None, screen: str = "") -> str:
+    """The planner's instructions and tools: everything for a repair (areas None); otherwise only the rules and
+    tools that can apply to this request and screen."""
+    extra = ""
+    if areas is None or "files" in areas:
+        extra += _FILES_RULE
+    if areas is None or "DIALOG BOX IS OPEN" in screen:
+        extra += _DIALOG_RULE
+    head, tail = SYSTEM.rsplit("Tools:", 1)
+    return head + extra + "Tools:" + tail + catalog(tools, areas)
 
 
 def site_hints(request: str) -> str:
@@ -343,8 +404,9 @@ def site_hints(request: str) -> str:
     return "; ".join(f"{name} = {url}" for name, url in hits.items())
 
 
-def planning_prompt(request: str, tools: dict, screen: str, recent: str, shortcuts: str, unsure: bool) -> tuple[str, str]:
-    system = SYSTEM + catalog(tools)
+def planning_prompt(request: str, tools: dict, screen: str, recent: str, shortcuts: str, unsure: bool,
+                    front: str = "") -> tuple[str, str]:
+    system = system_for(tools, areas_for(request + " " + recent[-200:], front), screen)
     user = [f"Request: {request}"]
     sites = site_hints(request)
     if sites:
@@ -362,9 +424,10 @@ def planning_prompt(request: str, tools: dict, screen: str, recent: str, shortcu
     return system, "\n".join(user)
 
 
-def continue_prompt(request: str, tools: dict, done: list[str], screen: str, shortcuts: str) -> tuple[str, str]:
+def continue_prompt(request: str, tools: dict, done: list[str], screen: str, shortcuts: str,
+                    front: str = "") -> tuple[str, str]:
     """After a look_again: plan the rest from the screen as it is now."""
-    system = SYSTEM + catalog(tools)
+    system = system_for(tools, areas_for(request, front), screen)
     user = [f"Request: {request}",
             "Done so far (don't repeat): " + ("; ".join(done) or "nothing"),
             f"Screen now:\n{screen}"]
@@ -377,7 +440,7 @@ def continue_prompt(request: str, tools: dict, done: list[str], screen: str, sho
 
 def repair_prompt(request: str, tools: dict, done: list[str], failed: str, why: str, screen: str,
                   shortcuts: str) -> tuple[str, str]:
-    system = SYSTEM + catalog(tools)
+    system = system_for(tools, None)
     user = [f"Request: {request}",
             "Done so far (don't repeat): " + ("; ".join(done) or "nothing"),
             f"This step failed: {failed}. {why}",

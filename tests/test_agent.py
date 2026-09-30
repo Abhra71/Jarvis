@@ -944,3 +944,32 @@ class PopupMidStepTest(unittest.TestCase):
             final = agent.answer("close it")
         self.assertEqual(final, "Closed the Student Feedback Form. Opened Chemistry by Sunil Sir.")
         think.assert_not_called()
+
+
+class PromptDietTest(unittest.TestCase):
+    """1 Oct: every plan sent every tool and ability; Groq's free limit is 8,000 tokens a minute per model."""
+
+    def test_only_the_areas_a_request_needs(self):
+        s, _ = planmod.planning_prompt("open claude", TOOLS, "x", "", "", False)
+        full = planmod.system_for(TOOLS, None)
+        self.assertLess(len(s), len(full) * 0.8)
+        for gone in ("code_comment", "pw_subject", "gmail_draft", "find_files", "youtube(", "Files and folders"):
+            self.assertNotIn(gone, s)
+        for kept in ("open_app(", "snap_left", "Sending, posting", "Never type passwords"):
+            self.assertIn(kept, s)
+
+    def test_the_request_or_front_window_brings_its_tools(self):
+        s, _ = planmod.planning_prompt("comment line 5", TOOLS, "x", "", "", False, "code: a.cpp - Visual Studio Code")
+        self.assertIn("code_comment", s)
+        s, _ = planmod.planning_prompt("open my newest pdf", TOOLS, "x", "", "", False)
+        self.assertIn("find_newest", s)
+        self.assertIn("Files and folders", s)
+        s, _ = planmod.planning_prompt("skip this", TOOLS, "x", "", "", False, "chrome: lofi - YouTube - Google Chrome")
+        self.assertIn("youtube(", s)
+        s, _ = planmod.planning_prompt("ok", TOOLS, "A DIALOG BOX IS OPEN: Save", "", "", False)
+        self.assertIn("answer it first", s)
+
+    def test_a_repair_sees_everything(self):
+        s, _ = planmod.repair_prompt("open claude", TOOLS, [], "open_app", "why", "x", "")
+        self.assertIn("code_comment", s)
+        self.assertIn("Files and folders", s)

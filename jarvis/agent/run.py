@@ -168,7 +168,7 @@ class Agent:
                     return asked
                 snap = self._snap()  # closed (the user always wants that): plan from the page under it
             system, user = planning_prompt(text, self.tools, snap.text(), self.context.text(),
-                                           shortcuts.for_window(snap.front, text), unsure)
+                                           shortcuts.for_window(snap.front, text), unsure, snap.front)
             try:
                 plan = self._plan(out, system, user)
             except NeedsEyes as e:
@@ -226,7 +226,7 @@ class Agent:
                     looks -= 1
                     continue
                 system, user = continue_prompt(request, self.tools, done, snap.text(),
-                                               shortcuts.for_window(snap.front, request))
+                                               shortcuts.for_window(snap.front, request), snap.front)
                 try:
                     more = parse(self._think(out, system, user), self.tools)
                 except NeedsEyes:
