@@ -95,6 +95,12 @@ settings = "ms-settings:"
 paint = "mspaint.exe"
 "vs code" = "code"
 "visual studio code" = "code"
+# BlueJ (Java) is a portable install in OneDrive Documents, not in the Start menu (30 Sep); speech hears it as
+# "Blue Jay" / "BlueJig".
+bluej = 'C:\Users\abhra\OneDrive\Documents\BlueJ\bluej.exe'
+"blue j" = 'C:\Users\abhra\OneDrive\Documents\BlueJ\bluej.exe'
+"blue jay" = 'C:\Users\abhra\OneDrive\Documents\BlueJ\bluej.exe'
+bluejig = 'C:\Users\abhra\OneDrive\Documents\BlueJ\bluej.exe'
 # Speech recognition often hears "Claude" as "Cloud"; both open the Claude desktop app.
 claude = "shell:AppsFolder\\Claude_pzs8sxrjxfjjc!Claude"
 cloud = "shell:AppsFolder\\Claude_pzs8sxrjxfjjc!Claude"
