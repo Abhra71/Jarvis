@@ -847,3 +847,41 @@ class PopupNoticeTest(unittest.TestCase):
         from jarvis import assistant
         self.assertTrue(assistant._STOP.fullmatch("nothing nothing"))
         self.assertTrue(assistant._STOP.fullmatch("nothing, nothing"))
+
+
+class DictationTest(unittest.TestCase):
+    """30 Sep: 'start dictation', then everything said is typed quietly until 'stop dictation'."""
+
+    def _assistant(self):
+        from jarvis import assistant
+        a = assistant.Assistant.__new__(assistant.Assistant)
+        a.dictating, a.dictated = False, ""
+        a.skills = mock.Mock()
+        a.skills.call.side_effect = lambda name, args: "Typed it." if name == "type_text" else "Pressed."
+        a.brain = mock.Mock(answer_agent=mock.Mock(return_value=None))
+        return a
+
+    def test_types_quietly_until_stopped(self):
+        a = self._assistant()
+        with mock.patch("jarvis.assistant.elements.focused_kind", return_value="field"):
+            self.assertIn("Dictation on", a._handle("Start dictation.")[1])
+        self.assertEqual(a._handle("Hello Mom, I'll be late today.")[1], "")
+        a.skills.call.assert_called_with("type_text", {"text": "Hello Mom, I'll be late today. "})
+        self.assertEqual(a._handle("new line")[1], "")
+        a.skills.call.assert_called_with("press_key", {"key": "shift+enter"})  # never Enter: it would send
+        self.assertEqual(a._handle("Stop dictation.")[1], "Dictation off.")
+        self.assertFalse(a.dictating)
+
+    def test_scratch_that_removes_the_last_piece(self):
+        a = self._assistant()
+        a.dictating = True
+        a._handle("This part is a mistake that is quite long indeed")
+        a._handle("scratch that")
+        presses = [c.args[1]["times"] for c in a.skills.call.call_args_list if c.args[0] == "press_key"]
+        self.assertEqual(sum(presses), len("This part is a mistake that is quite long indeed "))
+
+    def test_needs_a_text_box(self):
+        a = self._assistant()
+        with mock.patch("jarvis.assistant.elements.focused_kind", return_value="button"):
+            self.assertIn("text box first", a._handle("start dictation")[1])
+        self.assertFalse(a.dictating)

@@ -13,13 +13,22 @@ from .audio import Mic, record_utterance
 from .skills import volume
 from .brain import Brain, BrainUnavailable
 from . import abilities
-from .skills import Skills, desktop, keys, site_url, sites
+from .skills import Skills, desktop, elements, keys, site_url, sites
 from .stt import Transcriber
 from .tts import Speaker
 from .usage import usage
 from .wakeword import WakeWordDetector
 
 log = logging.getLogger(__name__)
+
+# Dictation (30 Sep): after "start dictation", everything said is typed where the cursor is, until "stop".
+_DICTATE_ON = re.compile(r"(start|begin|turn on) (dictation|dictating|typing)( mode)?|dictation mode|take (a )?dictation|"
+                         r"(start )?type (what|whatever) i (say|speak)")
+_DICTATE_OFF = re.compile(r"(stop|end|finish|turn off|exit|quit) (dictation|dictating|typing)( mode)?|dictation off|"
+                          r"stop|that'?s (it|all)|done|i'?m done")
+_NEW_LINE = re.compile(r"(new|next) (line|paragraph)")
+_SCRATCH = re.compile(r"(scratch|delete|undo|remove|erase) (that|it|the last (bit|part|sentence))")
+DICTATION_SILENCE = 30  # seconds of quiet that end dictation
 
 _PLAY = re.compile(r"\b(play|listen to|put on|watch|resume)\b", re.I)
 _STOP = re.compile(r"(stop|cancel|never ?mind|forget it|leave it|that'?s all|nothing)( it| that)?"
@@ -73,6 +82,8 @@ class Assistant:
         self.dashboard_url = None
         self.stt = None
         self.wake = None
+        self.dictating = False
+        self.dictated = ""  # the last piece typed, for "scratch that"
         self.mic = None
 
     def _set(self, state: State):
@@ -115,6 +126,17 @@ class Assistant:
 
     def _handle(self, text: str, unsure: bool = False) -> tuple[str, str]:
         """Returns (who handled it, reply)."""
+        spoken = " ".join(text.lower().strip(" .!?,").split())
+        if self.dictating:
+            return "dictation", self._dictate(text, spoken)
+        if _DICTATE_ON.fullmatch(spoken):
+            kind = elements.focused_kind()
+            if kind not in ("field", "document", "dropdown"):
+                return "dictation", ("Put the cursor in a text box first, for example say 'click the search box', "
+                                     "then say start dictation.")
+            self.dictating, self.dictated = True, ""
+            log.info("Dictation on")
+            return "dictation", "Dictation on. Say stop dictation when you're done."
         # The answer to the agent's own question comes first ("close" means the pop-up, not the window).
         answer = getattr(self.brain, "answer_agent", None)
         reply = answer(text) if callable(answer) else None
@@ -170,6 +192,35 @@ class Assistant:
         except Exception:
             log.exception("AI turn failed")
             return "failed", "Sorry, something went wrong with that."
+
+    def _dictate(self, text: str, spoken: str) -> str:
+        """One piece of dictation: typed as said (never Enter: in a chat that would send it). Replies are
+        empty, so Jarvis stays quiet while you dictate."""
+        if _DICTATE_OFF.fullmatch(spoken):
+            self.dictating = False
+            log.info("Dictation off")
+            return "Dictation off."
+        if _NEW_LINE.fullmatch(spoken):
+            self.skills.call("press_key", {"key": "shift+enter"})  # a new line, not "send"
+            self.dictated = ""
+            return ""
+        if _SCRATCH.fullmatch(spoken):
+            if self.dictated:
+                left = len(self.dictated)
+                while left > 0:  # a key repeats at most 30 times per press
+                    self.skills.call("press_key", {"key": "backspace", "times": min(30, left)})
+                    left -= 30
+                self.dictated = ""
+                return ""
+            return "Nothing to scratch."
+        piece = text.strip() + " "
+        result = self.skills.call("type_text", {"text": piece})
+        result = result.get("text", "") if isinstance(result, dict) else str(result)
+        if not result.startswith("Typed"):
+            self.dictating = False
+            return f"I stopped dictation: {result}"
+        self.dictated = piece
+        return ""
 
     def open_dashboard(self) -> str:
         if not self.dashboard_url:
@@ -277,23 +328,28 @@ class Assistant:
                 self.stt.prepare()  # one-sentence GPU mode: load again while this follow-up is spoken
             saved = volume.duck() if listen.get("duck", True) else []  # music down while you speak
             try:
-                audio = record_utterance(self.mic, listen if first else followup)
+                window = {**listen, "no_speech_timeout": DICTATION_SILENCE} if self.dictating else followup
+                audio = record_utterance(self.mic, listen if first else window)
             finally:
                 volume.restore(saved)
             if audio is None:
                 self.stt.close()  # nobody spoke: free the GPU now, not after the helper's wait
+                if self.dictating:  # a long quiet spell ends dictation: the next "Hey Jarvis" is a command again
+                    self.dictating = False
+                    log.info("Dictation off (quiet for %s s)", DICTATION_SILENCE)
                 return  # silence: the caller plays the "back to sleep" chime
 
             self._set(State.THINKING)
             text = self.stt.transcribe(audio)
-            if text.lower().strip(" .!?,") in _HALLUCINATIONS:
+            if text.lower().strip(" .!?,") in _HALLUCINATIONS and not (self.dictating and text.strip()):
                 if first:
                     self.speaker.say("Sorry, I didn't catch that.")
                 return
 
             reply = self._handle_while_watching(text, self.stt.unsure)
-            self._set(State.SPEAKING)
-            self.speaker.say(reply)
+            if reply:  # dictation types quietly
+                self._set(State.SPEAKING)
+                self.speaker.say(reply)
 
             if self.skills.cancel.is_set():
                 # "Hey Jarvis" while busy: stopped, now take the new command with a full listening window.
