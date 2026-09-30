@@ -19,7 +19,7 @@ from urllib.parse import quote_plus
 import win32gui
 from pywinauto import keyboard
 
-from .. import desktop, elements
+from .. import desktop, elements, keys
 from ...nlu import normalize
 
 log = logging.getLogger(__name__)
@@ -255,11 +255,23 @@ def fullscreen(hwnd, want: bool = True) -> str:
     Pressed with the F key: browsers ignore a full-screen request that isn't a real key press or click."""
     if elements.is_fullscreen() == want:
         return "It's already full screen." if want else "It's not in full screen."
+    if not want:
+        # Esc only ever leaves full screen: no toggle to undo (30 Sep: a slow F then a retry F put it back).
+        for key in ("esc", "f"):
+            if key == "f":
+                _keys(hwnd, "f")
+            else:
+                keys.press("esc")
+            if _wait(lambda: not elements.is_fullscreen(), 2.0):
+                return "Left full screen."
+        return "Not done: it's still in full screen."
     for _ in range(2):  # right after a video opens, the player may not take the key yet
         _keys(hwnd, "f")
-        if _wait(lambda: elements.is_fullscreen() == want, 1.5):
-            return "Full screen." if want else "Left full screen."
-    return "Not done: the video didn't go full screen." if want else "Not done: it's still in full screen."
+        if _wait(lambda: elements.is_fullscreen(), 2.5):
+            return "Full screen."
+        if elements.is_fullscreen():  # it did, just late: pressing F again would undo it
+            return "Full screen."
+    return "Not done: the video didn't go full screen."
 
 
 def subtitles(hwnd, t: str) -> str:

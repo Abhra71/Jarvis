@@ -133,8 +133,38 @@ def show_in_explorer(path: str) -> str:
     if not p.exists():
         return f"{p} doesn't exist."
     _allow_foreground()
+    if _select_in_open_window(p):
+        return f"Showing {p.name} in File Explorer."
     subprocess.Popen(["explorer.exe", "/select,", str(p)])
     return f"Showing {p.name} in File Explorer."
+
+
+def _select_in_open_window(p: Path) -> bool:
+    """Reuse a File Explorer window already showing that folder (30 Sep: ten "newest pdf" requests opened ten
+    Downloads windows): select the file there and bring it forward."""
+    try:
+        import win32com.client
+        import win32gui
+        for w in win32com.client.Dispatch("Shell.Application").Windows():
+            try:
+                folder = w.Document.Folder
+                if Path(folder.Self.Path).resolve() != p.parent.resolve():
+                    continue
+                item = folder.ParseName(p.name)
+                if item is None:
+                    continue
+                w.Document.SelectItem(item, 1 | 4 | 8 | 16)  # select, only it, into view, focus
+                hwnd = int(w.HWND)
+                if win32gui.IsIconic(hwnd):
+                    import win32con
+                    win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                win32gui.SetForegroundWindow(hwnd)
+                return True
+            except Exception:
+                continue
+    except Exception:
+        log.debug("Couldn't reuse an Explorer window", exc_info=True)
+    return False
 
 
 # ---- changing (never deleting) ---------------------------------------------------------

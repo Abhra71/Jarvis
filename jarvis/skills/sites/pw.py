@@ -54,10 +54,16 @@ def _ocr_lines():
 
 
 def _wait(pred, timeout: float, step: float = 0.3) -> bool:
+    """Until pred() or the timeout. A pop-up form appearing ends the wait early (it hides the page; 30 Sep:
+    Khazana waited 20 s for text under the feedback form): the caller then finds the form and asks the user."""
     deadline = time.monotonic() + timeout
+    checks = 0
     while True:
         if pred():
             return True
+        checks += 1
+        if checks % 3 == 0 and _form_in_way():  # every ~1 s: the form check costs ~0.05 s
+            return False
         if time.monotonic() >= deadline:
             return False
         time.sleep(step)
@@ -261,9 +267,16 @@ def _khazana_home() -> str | None:
             if w and w[1] in desktop.BROWSERS:
                 desktop._focus(w[0])
         desktop.address_bar(url)
-        if _wait(lambda: "pageName=Khazana" in (desktop.current_url() or "") and _has_text("continue learning"), 10):
+        # Its title is always in view; "Continue Learning" may be below the fold in a half-width window (30 Sep).
+        if _wait(lambda: "pageName=Khazana" in (desktop.current_url() or "") and _has_text("khazana"), 8):
             _clear_notices()
             return None
+        form = _form_in_way()
+        if form:  # the page is there, under a form: the user decides (don't go the long way round)
+            return f"Not done: the {form} is over the page. Shall I close it, or do you want to fill it in?"
+        if "pageName=Khazana" in (desktop.current_url() or ""):
+            _clear_notices()
+            return None  # Khazana is open; its text was just slow to read
     r = open_study()
     if r.startswith("Not done"):
         return r
@@ -277,7 +290,7 @@ def _khazana_home() -> str | None:
     if not _wait(lambda: "/khazana/" in (desktop.current_url() or ""), 8):
         return "Not done: Khazana didn't open."
     _remember_place("khazana", desktop.current_url())
-    _wait(lambda: _has_text("continue learning"), 5)
+    _wait(lambda: _has_text("khazana"), 5)
     _clear_notices()
     return None
 
@@ -299,18 +312,22 @@ def open_khazana(request: str = "") -> str:
     if not subject:
         return "Opened Khazana."
     base = subject.split(" by ")[0]
-    lines = _ocr_lines()
     top = elements.page_top()
     # "Continue Learning": the course being studied, with its "View Course" on the same row.
     teacher_named = re.search(r"\b(sir|ma'?am|by)\b", said)
-    for ln in ([] if teacher_named else lines):  # its teacher isn't shown there: a named one goes to search
-        if ln.rect[1] >= top and _label_matches(ln.text, base, year):
-            views = [v for v in lines if "view course" in v.text.lower() and abs(v.rect[1] - ln.rect[1]) < 20
-                     and ln.rect[0] < v.rect[0] < ln.rect[0] + 700]
-            if views:
-                _click_at(views[0].rect)
-                if _wait(lambda: "khazana-topics" in (desktop.current_url() or ""), 6):
-                    return f"Opened Khazana {ln.text.strip()}."
+    for attempt in range(0 if teacher_named else 2):  # its teacher isn't shown there: a named one goes to search
+        lines = _ocr_lines()
+        for ln in lines:
+            if ln.rect[1] >= top and _label_matches(ln.text, base, year):
+                views = [v for v in lines if "view course" in v.text.lower() and abs(v.rect[1] - ln.rect[1]) < 20
+                         and ln.rect[0] < v.rect[0] < ln.rect[0] + 700]
+                if views:
+                    _click_at(views[0].rect)
+                    if _wait(lambda: "khazana-topics" in (desktop.current_url() or ""), 6):
+                        return f"Opened Khazana {ln.text.strip()}."
+        if attempt == 0:  # below the fold in a narrow window: scroll down once and look again
+            desktop.browser_action("scroll_down")
+            time.sleep(0.8)
     # Not a course being continued: Khazana's own search, straight by its address.
     home = desktop.current_url() or _places().get("khazana", "")
     root = home.split("?")[0].split("/khazana-")[0]

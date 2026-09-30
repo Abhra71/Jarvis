@@ -210,7 +210,14 @@ def read_front_lines(max_width: int = 1600) -> list[Line]:
     os.close(fd)
     try:
         img.save(path)
-        _last = parse_lines(_worker.ask(path), scale, l, t)
+        try:
+            _last = parse_lines(_worker.ask(path), scale, l, t)
+        except RuntimeError as e:
+            # 30 Sep (10x run): after a while the helper answered every read with a Windows error ("Exception
+            # calling Wait"), and PW failed 5 rounds running. A fresh helper reads fine: restart it and try once more.
+            log.warning("OCR helper failed (%s); restarting it", e)
+            _worker.stop()
+            _last = parse_lines(_worker.ask(path), scale, l, t)
     finally:
         try:
             os.remove(path)

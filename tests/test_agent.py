@@ -921,3 +921,26 @@ class GmailFlowTest(unittest.TestCase):
         self.assertEqual(gmail.parse("Email Mom about dinner saying I'll be late."), ("Mom", "Dinner", "I'll be late."))
         self.assertEqual(gmail.parse("email abhra at gmail dot com saying test")[0], "abhra@gmail.com")
         self.assertIsNone(gmail.parse("open gmail"))
+
+
+class PopupMidStepTest(unittest.TestCase):
+    """30 Sep: PW's feedback form appeared after the page loaded; the route's step reported it and the task stopped."""
+
+    def test_a_form_reported_by_a_step_becomes_the_question_then_carries_on(self):
+        desk = FakeDesktop()
+        answers = iter(["Not done: the Student Feedback Form is over the page. Shall I close it, or do you want "
+                        "to fill it in?", "Opened Chemistry by Sunil Sir."])
+
+        def do(args):
+            if args.get("ability") == "close_popup":
+                return "Closed the Student Feedback Form."
+            return next(answers)
+        desk.effects["do"] = do
+        with tempfile.TemporaryDirectory() as tmp:
+            agent, think = _agent(desk, [], tmp)
+            reply = agent.run("Open Physics Wallah, my batch, chemistry")
+            self.assertIn("Shall I close it, or do you want to fill it in?", reply)
+            self.assertTrue(agent.has_question())
+            final = agent.answer("close it")
+        self.assertEqual(final, "Closed the Student Feedback Form. Opened Chemistry by Sunil Sir.")
+        think.assert_not_called()
