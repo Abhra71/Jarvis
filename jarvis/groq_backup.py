@@ -16,7 +16,7 @@ import time
 
 import httpx
 
-from .notify import popup
+from .notify import fell_back, recovered
 from .usage import usage
 
 log = logging.getLogger(__name__)
@@ -109,8 +109,10 @@ class GroqBackup:
                 if model != models[0]:
                     log.info("Groq answered with %s", model)
                 if last:  # an earlier model failed (limit, timeout, outage): a real fallback, not load-sharing
-                    popup(f"Groq {last.split()[0].split('/')[-1]} unavailable → {model.split('/')[-1]}",
-                          f"groq-{model}")
+                    fell_back(f"groq-{models[0]}",
+                              f"Groq {last.split()[0].split('/')[-1]} unavailable → {model.split('/')[-1]}")
+                elif model == models[0]:
+                    recovered(f"groq-{model}", f"Back on Groq {model.split('/')[-1]}")
                 return r.json()["choices"][0]["message"]
             last = f"{model} {r.status_code}: {r.text[:150]}"
             log.warning("Groq %s", last)

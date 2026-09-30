@@ -20,7 +20,7 @@ from .config import ROOT
 from .groq_backup import GroqBackup, NeedsVision
 from .skills import Skills, action_budget, desktop, elements, mouse, request_parts, shortcuts
 from .skills import volume
-from .notify import popup
+from .notify import fell_back, popup, recovered
 from .usage import usage
 
 log = logging.getLogger(__name__)
@@ -392,7 +392,9 @@ class Brain:
                                meta.get("promptTokenCount", 0), meta.get("candidatesTokenCount", 0))
                 if model != self.models[0]:
                     log.info("Answered by fallback model %s", model)
-                    popup(f"Gemini {self.models[0]} busy → {model}", f"gemini-{model}")
+                    fell_back("gemini-model", f"Gemini {self.models[0]} busy → {model}")
+                else:
+                    recovered("gemini-model", f"Back on Gemini {model}")
                 return data
             usage.api_call("gemini", model, r.status_code, time.monotonic() - t0,
                            limited_for=_limit_seconds(r) if r.status_code == 429 else None)
@@ -518,12 +520,14 @@ class Brain:
         problems = []
         if self.groq:
             try:
-                return self.groq.complete(system, user)
+                plan = self.groq.complete(system, user)
+                recovered("planning", "Back on Groq for planning")
+                return plan
             except (httpx.HTTPError, RuntimeError, KeyError) as e:
                 log.warning("Groq couldn't plan: %s", e)
                 problems.append(f"groq: {e}")
                 if self.key:
-                    popup("Groq unavailable → Gemini is planning", "plan-backup")
+                    fell_back("planning", "Groq unavailable → Gemini is planning")
         if self.key:
             body = {"system_instruction": {"parts": [{"text": system}]},
                     "contents": [{"role": "user", "parts": [{"text": user}]}],

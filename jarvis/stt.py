@@ -79,13 +79,15 @@ class GpuHearing:
             msg = json.loads(line) if line else {"error": "the helper exited"}
         except ValueError:
             msg = {"error": f"unexpected output {line[:80]!r}"}
+        if proc is not self.proc:
+            return  # stopped on purpose (no follow-up speech): not a failure
         if msg.get("ready"):
             log.info("GPU hearing ready (%s, loaded in %.1fs)", self.model, msg.get("load_seconds", 0))
             self.ready.set()
         else:
             log.warning("GPU hearing unavailable, using the CPU: %s", msg.get("error"))
-            from .notify import popup
-            popup("Hearing: GPU model unavailable → CPU model", "hearing-cpu")
+            from .notify import fell_back
+            fell_back("hearing-gpu", "Hearing: GPU model unavailable → CPU model")
             self.failed = True  # e.g. no NVIDIA libraries: don't keep trying this session
             proc.kill()
 
@@ -125,8 +127,11 @@ class GpuHearing:
         return result
 
     def stop(self):
-        if self.alive():
-            self.proc.kill()
+        # 30 Sep log: stopping a helper that was still loading looked like "the helper exited", so the GPU was
+        # switched off for the rest of the session. Forget it first, so its reader knows it was on purpose.
+        proc, self.proc = self.proc, None
+        if proc is not None and proc.poll() is None:
+            proc.kill()
 
 
 class CloudHearing:
@@ -173,15 +178,15 @@ class CloudHearing:
                         f"HTTP {status}" if status else type(e).__name__)
             self.resting_until = time.monotonic() + 60
             self.was_down = True
-            from .notify import popup
-            popup("Hearing: cloud unavailable → local model", "hearing-local")
+            from .notify import fell_back
+            fell_back("hearing-cloud", "Hearing: cloud unavailable → local model")
             return None
         segments = data.get("segments") or []
         log.info("Cloud hearing in %.2fs", time.monotonic() - t0)
         if self.was_down:
             self.was_down = False
-            from .notify import popup
-            popup("Hearing: back on the cloud (Groq Whisper)", "hearing-cloud")
+            from .notify import recovered
+            recovered("hearing-cloud", "Hearing: back on the cloud (Groq Whisper)")
         return {"text": (data.get("text") or "").strip(), "segments": len(segments),
                 "confidence": min((s.get("avg_logprob", 0.0) for s in segments), default=0.0),
                 "no_speech": max((s.get("no_speech_prob", 1.0) for s in segments), default=1.0)}

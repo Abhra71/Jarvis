@@ -16,6 +16,7 @@ REPEAT_AFTER = 60.0  # seconds before the same pop-up may show again
 
 _sink: Callable[[str, str], None] | None = None
 _shown: dict[str, float] = {}
+_down: set[str] = set()  # areas now on a backup (hearing, voice, planning, a model…)
 _lock = threading.Lock()
 
 
@@ -36,6 +37,21 @@ def popup(text: str, key: str | None = None):
     sink = _sink
     if sink:
         threading.Thread(target=_show, args=(sink, text), daemon=True).start()
+
+
+def fell_back(area: str, text: str):
+    """Something switched to its backup: pop up (the same area at most once a minute)."""
+    _down.add(area)
+    popup(text, f"down-{area}")
+
+
+def recovered(area: str, text: str):
+    """The main one works again: pop up, but only if we had told the user it fell back (1 Oct: the user
+    asked for a pop-up when a model returns; before, only the AI and cloud hearing had one)."""
+    if area in _down:
+        _down.discard(area)
+        _shown.pop(f"down-{area}", None)  # a new fall-back later shows at once
+        popup(text, f"up-{area}")
 
 
 def _show(sink, text: str):

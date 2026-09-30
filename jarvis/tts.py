@@ -104,11 +104,16 @@ class Speaker:
                 self._play(LISTEN_CHIME)
                 return
             if self.engine == "edge":
+                from .notify import fell_back, recovered
                 try:
-                    self._play(self._edge_audio(text))
-                    return
+                    audio = self._edge_audio(text)
                 except Exception as e:
                     log.warning("edge-tts failed (%s), using offline voice", e)
+                    fell_back("voice", "Voice: online voice unavailable → offline voice")
+                else:
+                    recovered("voice", "Voice: back on the online voice")
+                    self._play(audio)
+                    return
             self._say_offline(text)
 
     def say_async(self, text: str):

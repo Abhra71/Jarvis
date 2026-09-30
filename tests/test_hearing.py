@@ -47,10 +47,21 @@ class HearingTest(unittest.TestCase):
         self.assertIsNone(t.gpu)
         t.prepare()  # nothing to start
 
+    def test_stopping_a_loading_gpu_is_not_a_failure(self):
+        g = stt.GpuHearing("small.en", 0)
+        proc = mock.Mock()
+        proc.poll.return_value = None
+        proc.stdout.readline.return_value = b""  # killed while loading
+        g.proc = proc
+        g.stop()
+        g._wait_ready(proc)
+        self.assertFalse(g.failed)
+
     def test_a_broken_gpu_is_not_retried_all_session(self):
         g = stt.GpuHearing("small.en", 120)
         proc = mock.Mock()
         proc.stdout.readline.return_value = b'{"error": "cublas64_12.dll not found"}\n'
+        g.proc = proc
         g._wait_ready(proc)
         self.assertTrue(g.failed)
         with mock.patch.object(stt.subprocess, "Popen") as popen:
