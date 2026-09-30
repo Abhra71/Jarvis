@@ -63,24 +63,32 @@ def _wait_for_draft(timeout: float = 12.0):
         if "gmail" not in desktop.front_window().lower():
             continue
         UIA, uia, doc = _doc()
-        to = _named(doc, UIA, uia, "To recipients")
-        if to:
-            return UIA, uia, doc, to
+        # "Subject" is always there; "To recipients" disappears into a name chip when the address is given.
+        if _named(doc, UIA, uia, "Subject"):
+            return UIA, uia, doc, _named(doc, UIA, uia, "To recipients")
     return None
 
 
+_SUGGESTED = re.compile(r"(?:^|\s)([\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,6})(?=\s|$)")  # "Name a@b.com" (not a run-together "Namea@b.comName")
+
+
 def _recipients(doc, UIA, uia) -> list[str]:
-    """Email addresses shown as chips in the To box."""
+    """Who the draft is to: address chips ("NAME (a@b.com)") and picked-contact chips (an option "NAME")."""
     found = doc.FindAll(UIA.TreeScope_Descendants, uia.CreateTrueCondition())
-    to = _named(doc, UIA, uia, "To recipients")
-    top = to.CurrentBoundingRectangle.bottom + 5 if to else 260
+    subject = _named(doc, UIA, uia, "Subject")
+    top = subject.CurrentBoundingRectangle.top + 5 if subject else 260  # chips sit above the subject line
     out = []
     for i in range(found.Length):
         e = found.GetElement(i)
         r = e.CurrentBoundingRectangle
-        m = _EMAIL.search(e.CurrentName or "")
-        if m and r.top < top and m.group(0) not in out:
+        name = e.CurrentName or ""
+        m = _EMAIL.search(name)
+        if r.top >= top or not name:
+            continue
+        if m and m.group(0) not in out:
             out.append(m.group(0))
+        elif e.CurrentControlType == UIA.UIA_ListItemControlTypeId and name not in out:
+            out.append(name)  # a contact picked from the suggestions (30 Sep: its chip has no address)
     return out
 
 
@@ -98,22 +106,55 @@ def draft(to: str, subject: str, body: str, browser) -> str:
         return "Not done: Gmail's new email didn't open."
     UIA, uia, doc, to_box = ready
     if not _EMAIL.fullmatch(to):
-        to_box.SetFocus()
-        time.sleep(0.2)
+        if not to_box:
+            return "Not done: the new email has no To box."
+        # Click into the To box like a person (30 Sep: focusing it right after the page loaded was ignored, and the
+        # typed name went nowhere), then check the name really is in it.
+        time.sleep(0.8)
+        box = elements.Element("field", "To recipients", tuple(
+            getattr(to_box.CurrentBoundingRectangle, k) for k in ("left", "top", "right", "bottom")))
+        elements.click(box)
+        time.sleep(0.3)
         desktop.type_text(to)
+        time.sleep(0.3)
+        try:
+            typed = to_box.GetCurrentPattern(UIA.UIA_ValuePatternId).QueryInterface(
+                UIA.IUIAutomationValuePattern).CurrentValue
+        except Exception:
+            typed = ""
+        if to.lower() not in (typed or "").lower():
+            return f"Not done: I couldn't type {to} into the To box."
+        below = to_box.CurrentBoundingRectangle.bottom - 5
+        want = to.lower()
         deadline = time.monotonic() + 3.0
-        options = None
-        while time.monotonic() < deadline:  # the contact suggestions
+        address = ""
+        while time.monotonic() < deadline and not address:  # the contact suggestions under the To box
             time.sleep(0.3)
             options = doc.FindAll(UIA.TreeScope_Descendants, uia.CreatePropertyCondition(
                 UIA.UIA_ControlTypePropertyId, UIA.UIA_ListItemControlTypeId))
-            if options.Length and any(_EMAIL.search(options.GetElement(i).CurrentName or "")
-                                      for i in range(options.Length)):
-                break
-        else:
+            for i in range(options.Length):
+                e = options.GetElement(i)
+                label = e.CurrentName or ""
+                m = _SUGGESTED.search(label)
+                # Only a visible suggestion, below the box, that is the person said (never a hidden list's
+                # entry: 30 Sep, a contacts picker's "Baba" entry was in the page too).
+                if m and not e.CurrentIsOffscreen and e.CurrentBoundingRectangle.top >= below \
+                        and (want in label.lower()):
+                    address = m.group(1)  # the top suggestion's address, said back before sending
+                    shown = label[:m.start()].strip() or address
+                    break
+        if not address:
             return f"Not done: I couldn't find {to} in your contacts. Say their email address instead."
+        time.sleep(0.3)  # let the top suggestion be highlighted
         keys.press("enter")  # the top suggestion
         time.sleep(0.6)
+        chips = _recipients(doc, UIA, uia)
+        if not chips:
+            return f"Not done: {to} wasn't added to the email."
+        # Say the address only if it belongs to the contact that was picked (same name on the chip).
+        who = f"{chips[0]} ({address})" if chips[0].lower() in (shown.lower(), address.lower()) else chips[0]
+        log.info("Gmail draft to %s, subject %r", who, subject)
+        return f"Email to {who}, subject {subject!r}" + (f", saying {body!r}" if body else "") + ", is ready."
     who = _recipients(doc, UIA, uia)
     if not who:
         return f"Not done: the email has no recipient; {to} wasn't accepted."
@@ -126,7 +167,7 @@ def send() -> str:
     """Send the open draft (Ctrl+Enter), then check it went: the draft's boxes are gone. The safety rules only
     let this run after the user's yes."""
     UIA, uia, doc = _doc()
-    if "gmail" not in desktop.front_window().lower() or not _named(doc, UIA, uia, "To recipients"):
+    if "gmail" not in desktop.front_window().lower() or not _named(doc, UIA, uia, "Subject"):
         return "Not done: there's no Gmail draft open in front."
     if not _recipients(doc, UIA, uia):
         return "Not done: the draft has no recipient."
@@ -135,7 +176,7 @@ def send() -> str:
     while time.monotonic() < deadline:
         time.sleep(0.4)
         UIA, uia, doc = _doc()
-        if not _named(doc, UIA, uia, "To recipients"):
+        if not doc or not _named(doc, UIA, uia, "Subject"):
             log.info("Gmail: sent")
             return "Sent."
     return "Not done: the email still looks unsent. Please check Gmail."

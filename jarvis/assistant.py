@@ -31,7 +31,8 @@ _SCRATCH = re.compile(r"(scratch|delete|undo|remove|erase) (that|it|the last (bi
 DICTATION_SILENCE = 30  # seconds of quiet that end dictation
 
 _PLAY = re.compile(r"\b(play|listen to|put on|watch|resume)\b", re.I)
-_STOP = re.compile(r"(stop|cancel|never ?mind|forget it|leave it|that'?s all|nothing)( it| that)?"
+_STOP = re.compile(r"(stop|cancel|never ?mind|forget it|leave it|that'?s all|nothing|no|nope|nah|no thanks|"
+                   r"don'?t|do not)( it| that| send it| do it)?"
                    r"(,? (stop|cancel|nothing))*( please)?( jarvis)?")
 
 # Words that make an "open …" / "search …" request too rich for the offline rules.
@@ -148,7 +149,8 @@ class Assistant:
             if agent:
                 agent.drop_pending()
                 agent.question = None
-            return "offline rules", "Okay, stopped."
+            # 30 Sep: a bare "no" after a question was planned as a new request (it asked about Send again).
+            return "offline rules", "Okay." if re.match(r"(no|nope|nah|don)", text.lower().strip()) else "Okay, stopped."
         if _PLAY.search(text) and volume.others_muted():
             # Asked to play something while apps are muted (by an earlier "mute", maybe days ago): unmute first,
             # on every path (the site packs play YouTube without reaching the AI's check).
