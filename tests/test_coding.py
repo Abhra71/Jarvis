@@ -48,3 +48,15 @@ class TranslateTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LayoutTest(unittest.TestCase):
+    def test_cramped_ai_code_is_laid_out(self):
+        from jarvis.coding import layout
+        self.assertEqual(layout("int f(int a) { int s = a; return s; }", False), "int f(int a) {\n    int s = a;\n    return s;\n}")
+        self.assertEqual(layout("int f(int a) { return a; }", True), "int f(int a)\n{\n    return a;\n}")
+
+    def test_session_names_make_vscode_code_right(self):
+        self.assertEqual(translate("print sum of digits is then sum", "cpp", None, {"sum"}),
+                         'cout << "sum of digits is " << sum << endl;')
+        self.assertEqual(translate("sum plus equals n mod 10", "cpp", None, set()), "sum += n % 10;")

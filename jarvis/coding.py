@@ -129,12 +129,13 @@ def _original_case(original: str, lowered: str) -> str:
     return original[i:i + len(lowered)] if i >= 0 else lowered
 
 
-def translate(said: str, lang: str, code: str | None = None) -> str | None:
-    """Speech -> code for `lang` ("java" or "cpp"), or None when it isn't one of the common patterns."""
+def translate(said: str, lang: str, code: str | None = None, names: set[str] | None = None) -> str | None:
+    """Speech -> code for `lang` ("java" or "cpp"), or None when it isn't one of the common patterns.
+    `names`: variables known from this session (VS Code doesn't show Jarvis its code)."""
     original = said.strip().rstrip(".")
     s = " ".join(re.sub(r"[,;:!?]", " ", original.lower()).split())
     s = s.replace("system dot out dot", "system out").replace("system.out.", "system out ")
-    known = identifiers(code)
+    known = identifiers(code) | (names or set())
     java = lang == "java"
 
     # printing
@@ -228,11 +229,12 @@ def translate(said: str, lang: str, code: str | None = None) -> str | None:
         n, k = m.group("n") or m.group("n2"), _num_words(m.group("k") or "1")
         return f"{n}--;" if k == "1" else f"{n} -= {k};"
     m = re.fullmatch(r"(?P<n>[a-z]\w*) (?P<op>plus|minus|times|divided by|mod) equals (?P<v>.+)", s)
-    if m and m.group("n") in known:
+    if m and m.group("n") not in _TYPES:
         op = {"plus": "+=", "minus": "-=", "times": "*=", "divided by": "/=", "mod": "%="}[m.group("op")]
         return f"{m.group('n')} {op} {expression(m.group('v'), known)};"
     m = re.fullmatch(r"(?:set |make |assign )?(?P<n>[a-z]\w*) (?:equals|equal to|=|becomes|to|as) (?P<v>.+)", s)
-    if m and m.group("n") in known:
+    if m and m.group("n") not in _TYPES and (m.group("n") in known or re.fullmatch(r"(?:set |assign )?[a-z]\w* "
+                                                                            r"(?:equals|=|becomes) .+", s)):
         return f"{m.group('n')} = {expression(m.group('v'), known)};"
     m = re.fullmatch(r"(?:add a |write a )?comment(?: saying| that says)? (.+)", s)
     if m:
@@ -247,11 +249,15 @@ def translate(said: str, lang: str, code: str | None = None) -> str | None:
 # ---- the AI, for anything else ------------------------------------------------------------------------------
 
 AI_SYSTEM = """You turn one spoken coding instruction into {language} code for a student's editor.
-Answer with the code ONLY: no explanation, no markdown fences.
+Answer in JSON: {{"code": "<the code>"}}. The code only: no explanation, no markdown fences.
 Follow the student's style: {style}
-Use the names already in their code where they fit: {names}.
-If the code opens a block the student will fill in next, put the single character {cursor} on its own line where the
-cursor should go. Keep it short: only what was asked."""
+Use the names already in their code where they fit: {names}.{static}
+Write the COMPLETE code that was asked for (a whole method, a whole loop with its body…), laid out properly:
+one statement per line, 4-space indents (use 
+ inside the JSON string).
+Only when the instruction just starts an empty block for the student to fill ("start a do-while", "make an empty
+method called show"), put the single character {cursor} on its own line inside it.
+Keep it short: only what was asked."""
 
 
 def ask_ai(said: str, lang: str, code: str | None, think) -> str | None:
@@ -260,7 +266,9 @@ def ask_ai(said: str, lang: str, code: str | None, think) -> str | None:
     style = ("braces on their own line; 4 spaces" if lang == "java" else "brace on the same line; 4 spaces; "
              "using namespace std")
     system = AI_SYSTEM.format(language=language, style=style, cursor=CURSOR,
-                              names=", ".join(sorted(identifiers(code))) or "none yet")
+                              names=", ".join(sorted(identifiers(code))) or "none yet",
+                              static=("\nTheir code runs from a static main: make new methods static, so main can "
+                                      "call them." if code and re.search(r"static\s+void\s+main", code) else ""))
     user = f"Instruction: {said}"
     if code:
         user += "\nTheir code so far (for context only, don't repeat it):\n" + code[-1500:]
@@ -279,7 +287,50 @@ def ask_ai(said: str, lang: str, code: str | None, think) -> str | None:
             pass
     if not out or len(out) > 1500:
         return None
+    if out.count("{") != out.count("}") or out.count("(") != out.count(")"):
+        log.warning("Coding AI's answer isn't balanced; not typing it: %r", out[:200])
+        return None  # never type broken code
+    # it goes in the middle of a file: no #include / using / import lines
+    out = "\n".join(ln for ln in out.split("\n")
+                    if not re.match(r"\s*(#include|using namespace|import\s+[\w.]+\*?;)", ln)).strip("\n")
+    if any(len(ln) > 90 and ln.count(";") > 1 for ln in out.split("\n")):
+        out = layout(out, allman=(lang == "java"))
     return out
+
+
+def layout(code: str, allman: bool) -> str:
+    """Cramped one-line code -> one statement per line with 4-space indents (braces in the user's style)."""
+    out, line, depth, paren, i = [], "", 0, 0, 0
+
+    def push(text):
+        if text.strip():
+            out.append("    " * depth + text.strip())
+
+    while i < len(code):
+        c = code[i]
+        if c == "(":
+            paren += 1
+        elif c == ")":
+            paren -= 1
+        if c == "{" and paren == 0:
+            if allman:
+                push(line)
+                push("{")
+            else:
+                push(line.rstrip() + " {")
+            line, depth = "", depth + 1
+        elif c == "}" and paren == 0:
+            push(line)
+            line, depth = "", max(0, depth - 1)
+            push("}")
+        elif c == ";" and paren == 0:
+            push(line + ";")
+            line = ""
+        elif c != "\n":
+            line += c
+        i += 1
+    push(line)
+    return "\n".join(out)
 
 
 def needs_scanner(code_after: str, text: str | None) -> list[str]:

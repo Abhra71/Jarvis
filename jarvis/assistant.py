@@ -97,6 +97,7 @@ class Assistant:
         self.wake = None
         self.dictating = False
         self.coding = False  # coding mode: speech -> code in BlueJ / VS Code
+        self.code_names: set[str] = set()  # variables written this session (VS Code doesn't show its code)
         self.dictated = ""  # the last piece typed, for "scratch that"
         self.mic = None
 
@@ -226,7 +227,7 @@ class Assistant:
     def _code(self, text: str, ed) -> str:
         """One spoken line of code, put in at the cursor and checked. Quiet when it works."""
         before = ed.text()  # BlueJ shows its whole code; VS Code doesn't (None)
-        code = coding.translate(text, ed.lang, before)
+        code = coding.translate(text, ed.lang, before, self.code_names)
         source = "patterns"
         if code is None:
             think = getattr(self.brain, "_think", None)
@@ -235,6 +236,7 @@ class Assistant:
         if not code:
             return "I didn't get that as code. Say it again, or say coding mode off."
         log.info("Coding (%s, %s): %r -> %r", ed.name, source, text, code)
+        self.code_names |= coding.identifiers(code)
         extra = coding.needs_scanner(code, before) if ed.lang == "java" else []
         if "scanner" in extra:
             code = "Scanner sc = new Scanner(System.in);\n" + code
