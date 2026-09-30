@@ -485,6 +485,20 @@ class LiveFindingsTest(unittest.TestCase):
                          checks.Check("playing", "", True))
 
 
+class SecretsOnScreenTest(unittest.TestCase):
+    def test_secrets_windows_are_blacked_out_even_behind_the_front_one(self):
+        from PIL import Image
+        from jarvis.skills import desktop
+        img = Image.new("RGB", (200, 100), "white")
+        wins = [(1, "claude.exe", "Claude"), (2, "code.exe", ".env - Visual Studio Code")]
+        with mock.patch.object(desktop, "_app_windows", return_value=wins), \
+                mock.patch.object(desktop.win32gui, "IsIconic", return_value=False), \
+                mock.patch.object(desktop.win32gui, "GetWindowRect", return_value=(100, 0, 200, 100)):
+            self.assertEqual(desktop.blank_secret_windows(img), 1)
+        self.assertEqual(img.getpixel((150, 50)), (0, 0, 0))
+        self.assertEqual(img.getpixel((50, 50)), (255, 255, 255))
+
+
 class OcrFindTest(unittest.TestCase):
     def test_find_words_inside_a_line(self):
         from jarvis.agent import ocr

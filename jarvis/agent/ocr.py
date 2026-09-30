@@ -200,6 +200,8 @@ def read_front_lines(max_width: int = 1600) -> list[Line]:
     l, t, r, b = win32gui.GetWindowRect(win32gui.GetForegroundWindow())
     l, t = max(l, 0), max(t, 0)
     img = ImageGrab.grab(bbox=(l, t, r, b), all_screens=True)
+    from ..skills import desktop
+    desktop.blank_secret_windows(img, (l, t))  # never read a secrets file, even one peeking in from behind
     scale = 1.0
     if img.width > max_width:
         scale = img.width / max_width

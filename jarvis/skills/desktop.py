@@ -384,6 +384,30 @@ def front_window() -> str:
     return f"{_process_name(hwnd).removesuffix('.exe')}: {win32gui.GetWindowText(hwnd)}"
 
 
+def secret_windows() -> list[tuple[int, int, int, int]]:
+    """Screen rectangles of visible windows showing a secrets file (.env, keys, passwords), in front or not."""
+    from .files import is_secret
+    out = []
+    for hwnd, _, title in _app_windows():
+        if is_secret(title) and not win32gui.IsIconic(hwnd):
+            out.append(win32gui.GetWindowRect(hwnd))
+    return out
+
+
+def blank_secret_windows(img, offset: tuple[int, int] = (0, 0)) -> int:
+    """Black out every secrets window in a screen image before anything reads or sends it. 30 Sep: VS Code
+    showed .env beside the front window, and the old guard only checked the front window."""
+    from PIL import ImageDraw
+    rects = secret_windows()
+    if rects:
+        draw = ImageDraw.Draw(img)
+        ox, oy = offset
+        for l, t, r, b in rects:
+            draw.rectangle((l - ox, t - oy, r - ox, b - oy), fill="black")
+        log.info("Blanked %d window(s) showing a secrets file", len(rects))
+    return len(rects)
+
+
 def screenshot_jpeg(max_width: int = 1100) -> bytes:
     """What's on screen right now, scaled down so it's quick to send and cheap for the AI.
     1100px wide still leaves video titles and buttons readable."""
@@ -393,6 +417,7 @@ def screenshot_jpeg(max_width: int = 1100) -> bytes:
 
     time.sleep(0.3)  # let the last click/scroll finish drawing
     img = ImageGrab.grab()
+    blank_secret_windows(img)
     if img.width > max_width:
         img = img.resize((max_width, round(img.height * max_width / img.width)), Image.LANCZOS)
     buf = io.BytesIO()
