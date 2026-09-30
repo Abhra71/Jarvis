@@ -36,6 +36,9 @@ def _load_cuda_libs():
             pass
 
 
+FIRST_WAIT = 30.0  # seconds to wait for the sentence in one-sentence mode
+
+
 def _send(obj: dict):
     sys.stdout.write(json.dumps(obj) + "\n")
     sys.stdout.flush()
@@ -70,9 +73,12 @@ def main():
             requests.put((header, data))
 
     threading.Thread(target=reader, daemon=True).start()
+    # idle 0 = one sentence, then exit (the user's rule, 30 Sep: the GPU is on only while they speak and it
+    # hears them, never while Jarvis thinks, talks or waits). It still waits a while for that one sentence.
+    once = idle <= 0
     while True:
         try:
-            item = requests.get(timeout=idle)
+            item = requests.get(timeout=FIRST_WAIT if once else idle)
         except queue.Empty:
             return  # a quiet spell: exit, which frees all GPU memory
         if item is None:
@@ -90,6 +96,8 @@ def main():
                    "segments": len(segments), "seconds": round(time.monotonic() - started, 3)})
         except Exception as e:
             _send({"error": f"{type(e).__name__}: {e}"})
+        if once:
+            return  # exiting frees every byte of GPU memory
 
 
 if __name__ == "__main__":

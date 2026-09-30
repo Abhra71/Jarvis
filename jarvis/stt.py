@@ -50,6 +50,7 @@ class GpuHearing:
 
     def __init__(self, model: str, idle_seconds: float):
         self.model, self.idle = model, idle_seconds
+        self.load_wait = 0.5  # how long a finished sentence may wait for the model to finish loading
         self.proc: subprocess.Popen | None = None
         self.ready = threading.Event()
         self.failed = False
@@ -90,7 +91,7 @@ class GpuHearing:
             self.start()
         # Still loading (a very short first sentence)? Don't make the user wait: the CPU model takes this
         # one (~0.65 s) and the GPU takes the next.
-        if not self.ready.wait(0.5) or not self.alive():
+        if not self.ready.wait(self.load_wait) or not self.alive():
             log.info("GPU hearing still loading; the CPU takes this sentence")
             return None
         proc = self.proc
@@ -113,6 +114,8 @@ class GpuHearing:
             log.warning("GPU hearing failed (%s); using the CPU this time", result.get("error", "timed out"))
             proc.kill()
             return None
+        if self.idle <= 0:
+            self.proc = None  # one sentence per helper: it has exited (or is exiting) and freed the GPU
         return result
 
     def stop(self):
@@ -136,10 +139,12 @@ class Transcriber:
         )
         gpu_model = cfg.get("gpu_model")
         self.gpu = GpuHearing(gpu_model, cfg.get("gpu_idle_seconds", 120)) if gpu_model else None
+        if self.gpu:
+            self.gpu.load_wait = cfg.get("gpu_load_wait", 0.5)
         log.info("Whisper ready%s", f" (GPU {gpu_model} on demand)" if self.gpu else "")
 
     def prepare(self):
-        """The wake word was heard: get the GPU model ready while Jarvis replies."""
+        """About to listen: get the GPU model loading while the user speaks."""
         if self.gpu:
             self.gpu.start()
 

@@ -21,6 +21,7 @@ from .wakeword import WakeWordDetector
 
 log = logging.getLogger(__name__)
 
+_PLAY = re.compile(r"(play|listen to|put on|watch|resume)", re.I)
 _STOP = re.compile(r"(stop|cancel|never ?mind|forget it|leave it|that'?s all|nothing)( it| that)?( please)?( jarvis)?")
 
 # Words that make an "open …" / "search …" request too rich for the offline rules.
@@ -125,6 +126,11 @@ class Assistant:
                 agent.drop_pending()
                 agent.question = None
             return "offline rules", "Okay, stopped."
+        if _PLAY.search(text) and volume.others_muted():
+            # Asked to play something while apps are muted (by an earlier "mute", maybe days ago): unmute first,
+            # on every path (the site packs play YouTube without reaching the AI's check).
+            log.info("Unmuting: they asked to play something while other apps were muted")
+            volume.mute(False)
         # The main sites first: common actions there are done in code, instantly, with no AI.
         site = sites.handle(text, self.skills.browser, unsure)
         if site:
@@ -266,12 +272,15 @@ class Assistant:
         first = True
 
         while not self.stopping.is_set():
+            if not first:
+                self.stt.prepare()  # one-sentence GPU mode: load again while this follow-up is spoken
             saved = volume.duck() if listen.get("duck", True) else []  # music down while you speak
             try:
                 audio = record_utterance(self.mic, listen if first else followup)
             finally:
                 volume.restore(saved)
             if audio is None:
+                self.stt.close()  # nobody spoke: free the GPU now, not after the helper's wait
                 return  # silence: the caller plays the "back to sleep" chime
 
             self._set(State.THINKING)

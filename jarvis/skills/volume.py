@@ -70,11 +70,16 @@ def mute(on: bool) -> str:
 
 
 def others_muted() -> bool:
-    """Are other apps silenced (by "mute", or the whole PC muted)?"""
+    """Are other apps silenced (by "mute", an app's own mute, or the whole PC muted)? Read from Windows
+    itself: 30 Sep, Chrome stayed muted from the night before, and after a restart Jarvis didn't know."""
     if _apps_muted_by_jarvis:
         return True
     try:
-        return bool(_endpoint().GetMute())
+        if _endpoint().GetMute():
+            return True
+        me = os.getpid()
+        return any(s.Process and s.Process.pid != me and s.SimpleAudioVolume.GetMute()
+                   for s in AudioUtilities.GetAllSessions())
     except Exception:
         return False
 
