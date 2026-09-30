@@ -110,7 +110,10 @@ def _step(d: dict, tools: dict) -> Step:
     try:
         check = checks.parse(d.get("expect"))
     except checks.BadCheck as e:
-        raise PlanError(str(e)) from e
+        # 1 Oct replay: "expect: volume" threw away a good plan. A check we can't read is no check (the step
+        # is then reported as done but not seen), not a reason to give up.
+        log.info("Dropping an unreadable check on %s: %s", name, e)
+        check = None
     return Step(name, clean, check, str(d.get("say") or "").strip())
 
 
@@ -159,6 +162,7 @@ _NOT_APPS = {"it", "this", "that", "this window", "the window", "window", "scree
 
 _CLOSE_THIS = re.compile(r"close (?:this|it|this one|this 1|that|this page|the page|this tab|the current (?:one|tab|page))")
 _BROWSER_APPS = {"chrome", "msedge", "brave", "firefox", "opera"}
+_AS_WELL = re.compile(r"(?: as well| too| also)$")
 _PW = re.compile(r"\b(pw|physics wallah)\b")
 _NOT_PW = re.compile(r"\b(youtube|google|search|video|videos)\b")
 
@@ -218,7 +222,13 @@ def code_plan(text: str, front: str = "", unsure: bool = False) -> Plan | None:
     on_youtube = "youtube" in normalize(text) or youtube.is_front(front)
     steps = []
     last_verb = ""
+    browser, _, title = (front or "").partition(": ")
+    in_browser = browser.lower() in _BROWSER_APPS
     for part in parts:
+        part = _AS_WELL.sub("", part)
+        if in_browser and _CLOSE_THIS.fullmatch(part):
+            steps.append(Step("browser", {"action": "close_tab"}))
+            continue
         m = _APP_WINDOW.fullmatch(part)
         if not m and last_verb:  # "snap chrome left and VS Code right": the verb is said once
             m = _APP_WINDOW.fullmatch(f"{last_verb} {part}")
@@ -383,7 +393,9 @@ Rules:
 - "expect" = how to SEE that the step worked: something that changes because of it. "window: X" (front app/title), "open: X", "closed: X", "element: X" (a named item that appears), "not element: X" (one that goes away, e.g. a dialog's button after clicking it), "text: X", "focus: field", "url: X", "playing", "paused", "fullscreen", "not fullscreen", "not dialog". Never the item you just clicked, never a label you guess. "" when nothing visible changes (volume, timers, files); Jarvis then says it couldn't confirm.
 - Do only what was asked. "It"/"that" = the recent context below.
 - "Close this/it/this one" with a browser in front = the current TAB (press_key ctrl+w), never the whole window.
-- Never guess a website from one unclear or odd word ("Playbots."): ask what they meant.
+- Never guess a website from one unclear or odd word ("Playbots.", "video.com"): ask what they meant.
+- Never invent text to type ("Your text here"): if they didn't say what to type, ask.
+- The user thinking aloud or stating something ("only Gemini and Groq will be used") is not a request: answer with {"reply": ...} and do nothing.
 - "reply": the result in the user's words ("Playing it in full screen."), only what the steps really do.
 - "say" only on a slow first step the user will notice, 2-4 words ("Opening WhatsApp").
 - Sending, posting, buying, deleting: include that step; Jarvis itself asks the user before doing it.

@@ -169,10 +169,12 @@ class PlanTest(unittest.TestCase):
 
     def test_bad_plans(self):
         for raw in ('{"steps": [{"do": "teleport"}]}', '{"steps": [{"do": "volume", "args": {"action": "loud"}}]}',
-                    '{"steps": [{"do": "open_app", "args": {"name": "x"}, "expect": "vibes: good"}]}',
                     "no json here", '{"steps": []}'):
             with self.assertRaises(planmod.PlanError, msg=raw):
                 planmod.parse(raw, TOOLS)
+        # a check it can't read is dropped, not the whole plan (1 Oct replay: "expect: volume")
+        p = planmod.parse('{"steps": [{"do": "open_app", "args": {"name": "x"}, "expect": "vibes: good"}]}', TOOLS)
+        self.assertIsNone(p.steps[0].check)
 
     def test_front_window_abilities_focus_the_named_window_first(self):
         p = planmod.parse('{"steps": [{"do": "snap_left", "args": {"value": "Google Chrome"}}]}', TOOLS)

@@ -119,7 +119,7 @@ def warnings(rows) -> list[str]:
     return out
 
 
-def plan_some(rows, n: int) -> list[str]:
+def plan_some(rows, n: int, skip: int = 0) -> list[str]:
     from jarvis.brain import load_api_key
     from jarvis.groq_backup import GroqBackup
     from jarvis.skills import Skills
@@ -132,7 +132,7 @@ def plan_some(rows, n: int) -> list[str]:
     tools = Skills(cfg, announce=lambda text: None).tools
     screen = "Front window: chrome: New Tab - Google Chrome\nOpen windows: chrome: New Tab - Google Chrome"
     out = []
-    for text, unsure, r, detail in [x for x in rows if x[2] == "AI" and x[3] in ("action", "screen", "files")][:n]:
+    for text, unsure, r, detail in [x for x in rows if x[2] == "AI" and x[3] in ("action", "screen", "files")][skip:skip + n]:
         time.sleep(8)  # Groq's free limit: 8,000 tokens a minute per model
         system, user = planmod.planning_prompt(text, tools, screen, "", "", unsure, "chrome: New Tab - Google Chrome")
         try:
@@ -150,6 +150,7 @@ def main():
     logging.disable(logging.INFO)
     ap = argparse.ArgumentParser()
     ap.add_argument("--ai", type=int, default=0, help="plan this many AI-bound sentences with Groq")
+    ap.add_argument("--skip", type=int, default=0, help="…after skipping this many of them")
     args = ap.parse_args()
     cfg = load_config()
     apps = AppLauncher(cfg.get("apps", {}))
@@ -165,7 +166,7 @@ def main():
     w = warnings(rows)
     lines += ["", f"== warnings ({len(w)}) =="] + [f"  {x}" for x in w]
     if args.ai:
-        lines += ["", f"== AI plans (pretend screen: a new Chrome tab) =="] + plan_some(rows, args.ai)
+        lines += ["", f"== AI plans (pretend screen: a new Chrome tab) =="] + plan_some(rows, args.ai, args.skip)
     report = "\n".join(lines)
     (ROOT / "logs" / "replay.txt").write_text(report, encoding="utf-8")
     print(report[:3000])
