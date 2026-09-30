@@ -199,7 +199,7 @@ class Skills:
 
         # Descriptions are kept short on purpose: every word is sent with every AI request, and the
         # free tiers are counted in tokens. Behaviour rules live once in the system prompt instead.
-        P = "Chrome profile folder, e.g. 'Profile 2'"
+        P = "Chrome profile: 'main', 'ai', 'work' or a folder"
         tools = [
             Tool("open_app", "Launch a desktop app.",
                  {"name": (S, "e.g. 'notepad', 'whatsapp'", True, None)},

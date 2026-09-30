@@ -704,3 +704,56 @@ class PwRouteTest(unittest.TestCase):
         from jarvis.skills import popups
         self.assertTrue(popups.is_notice("Milestone Achieved"))
         self.assertFalse(popups.is_notice("Student Feedback Form"))
+
+
+class LiveSession30SepTest(unittest.TestCase):
+    """The user's frustrating session on 30 Sep (12:17–12:25), each failure pinned down."""
+
+    def test_only_the_front_apps_media_counts(self):
+        from jarvis.agent import ocr
+        with mock.patch.object(ocr, "media_status", return_value={"Chrome": "Playing", "Brave": "Paused"}):
+            self.assertFalse(ocr.playing("brave.exe"))  # the video in Brave WAS paused
+            self.assertTrue(ocr.playing("chrome.exe"))
+            self.assertIsNone(ocr.playing("claude.exe"))  # no media of its own: can't be judged
+
+    def test_www_and_slash_dont_matter(self):
+        snap = context.take(FakeDesktop().readers())
+        snap._cache["url"] = "https://chess.com/"
+        self.assertTrue(checks.holds(checks.parse("url: https://www.chess.com"), snap, snap))
+
+    def test_the_planner_is_told_to_plan_only_the_new_request(self):
+        _, user = planmod.planning_prompt("open chess.com", TOOLS, "Front window: x", '- "pause" -> I\'m stuck', "", False)
+        self.assertIn("never redo them", user)
+        self.assertTrue(user.rstrip().endswith("Plan ONLY this request: open chess.com"))
+
+    def test_main_profile_among_three_abhras(self):
+        from jarvis.skills.browser import Profile, find_profile
+        ps = [Profile("Default", "ABHRA", "a@x", "ABHRA C"), Profile("Profile 1", "Abhra", "b@x", "Abhra"),
+              Profile("Profile 4", "Abhra", "c@x", "Abhra C")]
+        nick = {"main": "Default", "ai": "Profile 1"}
+        self.assertEqual(find_profile(ps, "ABHRA", nick).directory, "Default")
+        self.assertEqual(find_profile(ps, "abhra", nick).directory, "Default")
+        self.assertEqual(find_profile(ps, "main chrome profile", nick).directory, "Default")
+        self.assertEqual(find_profile(ps, "ai", nick).directory, "Profile 1")
+
+    def test_open_a_file_by_spoken_name_or_size(self):
+        from jarvis import abilities
+        from jarvis.abilities import files as F
+        with tempfile.TemporaryDirectory() as d:
+            folder = Path(d)
+            (folder / "the_brutal_revenge_not_ready.mp4").write_bytes(b"x" * 38166000)
+            (folder / "notes.txt").write_text("hi")
+            (folder / ".env").write_text("KEY=1")
+            said = "There is a full file called the underscore brutal underscore revenge underscore not underscore ready. Open that."
+            ab, value = abilities.match(said)
+            self.assertEqual(ab.name, "open_file_here")
+            self.assertEqual(F.pick(folder, value)[0].name, "the_brutal_revenge_not_ready.mp4")
+            ab, value = abilities.match("Open the file with size 37,272 kilobytes.")
+            self.assertEqual(F.pick(folder, value)[0].name, "the_brutal_revenge_not_ready.mp4")
+            self.assertIsNone(F.pick(folder, "env")[0])  # secrets are never picked
+
+    def test_stop_needs_no_ai(self):
+        from jarvis import assistant
+        for said in ("stop", "never mind", "cancel that", "stop jarvis"):
+            self.assertTrue(assistant._STOP.fullmatch(said), said)
+        self.assertFalse(assistant._STOP.fullmatch("stop the music"))

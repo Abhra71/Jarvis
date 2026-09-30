@@ -39,7 +39,8 @@ def _popup() -> str:
 
 def _playing() -> bool | None:
     from . import ocr
-    return ocr.playing()
+    import win32gui
+    return ocr.playing(desktop._process_name(win32gui.GetForegroundWindow()))
 
 
 @dataclass

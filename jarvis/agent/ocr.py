@@ -269,9 +269,19 @@ def media_status() -> dict[str, str]:
     return out
 
 
-def playing() -> bool | None:
-    """True if anything is playing, False if something is paused/stopped, None if no media at all."""
+def playing(app: str = "") -> bool | None:
+    """Is `app`'s media playing ("brave", "chrome", "spotify"…)? True/False, or None when that can't be told.
+
+    Only the app in front counts: 30 Sep, a video paused fine in Brave while Chrome (chess.com's sounds) was
+    "Playing", and a check that looked at every app said the pause had failed, three requests in a row."""
     status = media_status()
     if not status:
         return None
-    return any(s == "Playing" for s in status.values())
+    app = app.lower().removesuffix(".exe")
+    app = {"msedge": "edge"}.get(app, app)
+    mine = [s for name, s in status.items() if app and app in name.lower()]
+    if mine:
+        return any(s == "Playing" for s in mine)
+    if len(status) == 1 and not app:
+        return next(iter(status.values())) == "Playing"
+    return None  # the front app has no media of its own: nothing to judge by

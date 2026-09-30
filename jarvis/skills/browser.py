@@ -103,6 +103,16 @@ def find_profile(profiles: list[Profile], spoken: str | None, nicknames: dict[st
         if spoken.strip().lower() == p.directory.lower():
             return p
 
+    exact = [p for p in profiles if p.name == spoken.strip()]  # "ABHRA" as written (the AI copies names)
+    if len(exact) == 1:
+        return exact[0]
+    same = [p for p in profiles if p.name.lower() == spoken.strip().lower()]
+    if len(same) > 1:  # "abhra": three profiles have that name; the main one is meant (30 Sep: the AI one opened)
+        main = (nicknames or {}).get("main")
+        hit = next((p for p in same if main and p.directory.lower() == main.lower()), None)
+        if hit:
+            return hit
+
     words = [w for w in re.findall(r"[a-z0-9]+", spoken.lower()) if w not in _FILLER_WORDS]
     s = " ".join(words)
     for nick, folder in (nicknames or {}).items():

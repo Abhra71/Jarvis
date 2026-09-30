@@ -340,10 +340,13 @@ def planning_prompt(request: str, tools: dict, screen: str, recent: str, shortcu
     if unsure:
         user.append("(Speech recognition was unsure of these words: if they don't clearly make sense, ask.)")
     if recent:
-        user.append(f"Recent:\n{recent}")
+        # 30 Sep: after a stuck "pause", the next request ("open chess.com") was planned as the pause again.
+        user.append("Earlier (only to know what 'it'/'that' means; those requests are over, even if they failed: "
+                    f"never redo them unless this request asks):\n{recent}")
     user.append(f"Screen now:\n{screen}")
     if shortcuts:
         user.append(f"Shortcuts here: {shortcuts}")
+    user.append(f"Plan ONLY this request: {request}")
     return system, "\n".join(user)
 
 

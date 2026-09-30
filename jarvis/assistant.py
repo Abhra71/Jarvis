@@ -20,6 +20,8 @@ from .wakeword import WakeWordDetector
 
 log = logging.getLogger(__name__)
 
+_STOP = re.compile(r"(stop|cancel|never ?mind|forget it|leave it|that'?s all|nothing)( it| that)?( please)?( jarvis)?")
+
 # Words that make an "open …" / "search …" request too rich for the offline rules.
 _NEEDS_AI = re.compile(r"\b(profile|account|tabs?|window|and|then|close|in my|on my|on youtube|on amazon)\b")
 
@@ -115,6 +117,13 @@ class Assistant:
         reply = answer(text) if callable(answer) else None
         if isinstance(reply, str):
             return "agent", reply
+        if _STOP.fullmatch(" ".join(text.lower().strip(" .!?").split())):
+            # 30 Sep: "Stop." went to the AI and came back as a question. Stopping needs no thinking.
+            agent = getattr(self.brain, "agent", None)
+            if agent:
+                agent.drop_pending()
+                agent.question = None
+            return "offline rules", "Okay, stopped."
         # The main sites first: common actions there are done in code, instantly, with no AI.
         site = sites.handle(text, self.skills.browser, unsure)
         if site:

@@ -37,6 +37,11 @@ _ALIASES = {"title": "window", "front": "window", "app": "window", "item": "elem
 _TYPABLE = {"field", "document", "dropdown"}
 
 
+def _bare_url(u: str) -> str:
+    """'https://www.chess.com/' -> 'chess.com': the parts a site adds or drops on its own."""
+    return re.sub(r"^(https?:)?/*(www\.)?", "", u.strip()).rstrip("/")
+
+
 class BadCheck(ValueError):
     pass
 
@@ -129,7 +134,7 @@ def _holds(c: Check, snap: Snapshot, before: Snapshot | None) -> bool:
         want = _norm(v)
         return snap.focus in _TYPABLE if want in ("field", "edit", "text box", "typable", "input") else snap.focus == want
     if c.kind == "url":
-        return _has(snap.url or "", v)
+        return _has(_bare_url(snap.url or ""), _bare_url(v))
     if c.kind == "playing":
         return snap.playing is True
     if c.kind == "fullscreen":
