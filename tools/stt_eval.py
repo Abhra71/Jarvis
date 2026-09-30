@@ -92,7 +92,8 @@ def main():
     load_cuda_libs()
     clean = [(t, v, asyncio.run(_speak(t, v))) for v in VOICES for t in COMMANDS]
     music = asyncio.run(_speak(NOISE_LINE, "hi-IN-MadhurNeural"))
-    noisy = [(t, v + "+music", _with_music(a, music)) for t, v, a in clean if v == VOICES[0]]
+    level = float(os.environ.get("MUSIC_LEVEL", "0.35"))  # 0.35 = loud room; Jarvis ducks apps to 12% of that
+    noisy = [(t, v + "+music", _with_music(a, music, level)) for t, v, a in clean if v == VOICES[0]]
     clips = clean + noisy
     wanted = sys.argv[1:] or ["base.en", "small.en", "large-v3-turbo"]
     setups = [s for s in [("base.en cpu (fallback)", "base.en", "cpu", "int8"),

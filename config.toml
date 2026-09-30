@@ -49,10 +49,12 @@ model = "base.en"            # on the CPU: the fallback, and the whole thing if 
 compute_type = "int8"
 # The better model on the GPU, but only during a conversation: it loads on "Hey Jarvis" and its process
 # exits after gpu_idle_seconds of quiet, so the GPU is completely free while Jarvis just waits (user's rule).
-# Measured 27 Sep (tools/stt_eval.py, 60 clips): small.en GPU 4.9% word errors in 0.25 s and ~360 MB;
-# base.en CPU 7.2% in 0.65 s. Remove gpu_model to use the CPU only.
+# Measured 30 Sep (tools/stt_eval.py, 112 clips incl. the user's misheard sentences and music): small.en GPU 5.9% clean,
+# 8.9% with ducked music, 0.26 s, 357 MB, loads in ~3.5 s; large-v3-turbo 8.3% / 11.9%, 0.69 s, 1 GB, loads in ~7 s
+# (better only with loud music, which Jarvis now ducks); base.en CPU 9.8%, 0.68 s. Remove gpu_model to use the CPU only.
 gpu_model = "small.en"
-gpu_idle_seconds = 120
+gpu_idle_seconds = 0         # 0 = one sentence: the GPU loads as you start speaking and exits right after (user, 30 Sep)
+gpu_load_wait = 4.0          # a finished sentence waits this long for the GPU model (loads in ~3.5 s) before the CPU takes it
 
 [tts]
 engine = "edge"              # "edge" (natural, needs internet) / "offline" (pyttsx3) / "beep"

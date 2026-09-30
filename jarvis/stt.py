@@ -26,7 +26,9 @@ HINT = ("Open Chrome. Volume 40. Volume up. Mute. Search for Python tutorials. S
         "Open my main profile. Move the pawn from e2 to e4. Knight to f3. Bishop takes c4. Open chess. "
         # The user's own names, misheard in sessions and in tools/stt_eval.py (27 Sep): "Physics Voila",
         # "Groke", "cloud app", "rocker's", "your football".
-        "Physics Wallah, Groq, Gemini, Claude, Rockerz 480, eFootball, BlueJ, WhatsApp, VS Code, YouTube.")
+        "Physics Wallah, Groq, Gemini, Claude, Rockerz 480, eFootball, BlueJ, WhatsApp, VS Code, YouTube. "
+        # Misheard by every model on 30 Sep: "Kazana", "Skip the end".
+        "Open Khazana chemistry. Skip the ad. Minimize all windows. Exit full screen.")
 
 _SENTENCE = re.compile(r"[^.!?]+[.!?]*")
 
