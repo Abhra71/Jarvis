@@ -13,7 +13,8 @@ from .audio import Mic, record_utterance
 from .skills import volume
 from .brain import Brain, BrainUnavailable
 from . import abilities
-from .skills import Skills, desktop, elements, keys, site_url, sites
+from . import coding
+from .skills import Skills, desktop, editors, elements, keys, site_url, sites
 from .stt import Transcriber
 from .tts import Speaker
 from .usage import usage
@@ -29,6 +30,17 @@ _DICTATE_OFF = re.compile(r"(stop|end|finish|turn off|exit|quit) (dictation|dict
 _NEW_LINE = re.compile(r"(new|next) (line|paragraph)")
 _SCRATCH = re.compile(r"(scratch|delete|undo|remove|erase) (that|it|the last (bit|part|sentence))")
 DICTATION_SILENCE = 30  # seconds of quiet that end dictation
+
+# Coding mode (30 Sep): with BlueJ or VS Code in front, speech becomes code (jarvis/coding.py); commands still work.
+_CODING_ON = re.compile(r"(start |enter |turn on |switch to )?(coding|code) mode( on)?|start coding|let'?s code")
+_EXIT_BLOCK = re.compile(r"(come |get |go )?(out of|outside|exit|leave|after|close|end) (the |this )?(loop|block|if|else|"
+                         r"while|for|braces?|brackets?|method|function|condition)|next block")
+_CODING_OFF = re.compile(r"(stop|end|exit|leave|turn off|quit) (coding|code)( mode)?|(coding|code) mode off|"
+                         r"stop coding")
+# Said in coding mode but meant as a command, not code.
+_NOT_CODE = re.compile(r"(open|close|play|pause|resume|volume|mute|unmute|search|switch|minimi[sz]e|maximi[sz]e|snap|"
+                       r"scroll|undo|redo|save|copy|paste|cut|select all|go back|what|who|how|why|when|tell me|"
+                       r"turn (on|off)|brightness|night light|bluetooth|wi ?fi|email|upload|stop|cancel)\b")
 
 _PLAY = re.compile(r"\b(play|listen to|put on|watch|resume)\b", re.I)
 _STOP = re.compile(r"(stop|cancel|never ?mind|forget it|leave it|that'?s all|nothing|no|nope|nah|no thanks|"
@@ -84,6 +96,7 @@ class Assistant:
         self.stt = None
         self.wake = None
         self.dictating = False
+        self.coding = False  # coding mode: speech -> code in BlueJ / VS Code
         self.dictated = ""  # the last piece typed, for "scratch that"
         self.mic = None
 
@@ -130,6 +143,21 @@ class Assistant:
         spoken = " ".join(text.lower().strip(" .!?,").split())
         if self.dictating:
             return "dictation", self._dictate(text, spoken)
+        if _CODING_ON.fullmatch(spoken):
+            self.coding = True
+            log.info("Coding mode on")
+            return "coding", "Coding mode on. Java in BlueJ, C++ in VS Code. Say coding mode off when you're done."
+        if _CODING_OFF.fullmatch(spoken):
+            self.coding = False
+            log.info("Coding mode off")
+            return "coding", "Coding mode off."
+        if self.coding and _EXIT_BLOCK.fullmatch(spoken) and editors.current():
+            r = editors.current().exit_block()
+            return "coding", "" if r == "ok" else r
+        if self.coding and not abilities.match(text) and not _NOT_CODE.match(spoken):
+            ed = editors.current()
+            if ed:
+                return "coding", self._code(text, ed)
         if _DICTATE_ON.fullmatch(spoken):
             kind = elements.focused_kind()
             if kind not in ("field", "document", "dropdown"):
@@ -194,6 +222,40 @@ class Assistant:
         except Exception:
             log.exception("AI turn failed")
             return "failed", "Sorry, something went wrong with that."
+
+    def _code(self, text: str, ed) -> str:
+        """One spoken line of code, put in at the cursor and checked. Quiet when it works."""
+        before = ed.text()  # BlueJ shows its whole code; VS Code doesn't (None)
+        code = coding.translate(text, ed.lang, before)
+        source = "patterns"
+        if code is None:
+            think = getattr(self.brain, "_think", None)
+            code = coding.ask_ai(text, ed.lang, before, think) if think and self.brain.available else None
+            source = "AI"
+        if not code:
+            return "I didn't get that as code. Say it again, or say coding mode off."
+        log.info("Coding (%s, %s): %r -> %r", ed.name, source, text, code)
+        extra = coding.needs_scanner(code, before) if ed.lang == "java" else []
+        if "scanner" in extra:
+            code = "Scanner sc = new Scanner(System.in);\n" + code
+        result = ed.insert(code)
+        if result != "ok":
+            return result
+        if "import" in extra:  # Java input needs "import java.util.Scanner;" at the top
+            here = getattr(ed, "caret_line", lambda: None)()
+            ed.go_to_line(1)
+            keys.press("home")
+            editors._paste("import java.util.Scanner;\n")
+            if here:
+                ed.go_to_line(here + 1)
+                keys.press("end")
+        after = ed.text()
+        if before is not None and after is not None:
+            wanted = [ln.strip() for ln in code.replace(editors.CURSOR, "").split("\n") if ln.strip()]
+            missing = [ln for ln in wanted if ln not in after]
+            if missing:
+                return f"Not done: I couldn't see {missing[0]} in the code afterwards."
+        return ""
 
     def _dictate(self, text: str, spoken: str) -> str:
         """One piece of dictation: typed as said (never Enter: in a chat that would send it). Replies are
@@ -330,7 +392,8 @@ class Assistant:
                 self.stt.prepare()  # one-sentence GPU mode: load again while this follow-up is spoken
             saved = volume.duck() if listen.get("duck", True) else []  # music down while you speak
             try:
-                window = {**listen, "no_speech_timeout": DICTATION_SILENCE} if self.dictating else followup
+                window = {**listen, "no_speech_timeout": DICTATION_SILENCE} if self.dictating or self.coding \
+                    else followup
                 audio = record_utterance(self.mic, listen if first else window)
             finally:
                 volume.restore(saved)

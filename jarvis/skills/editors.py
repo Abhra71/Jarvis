@@ -165,6 +165,19 @@ class Editor:
             keys.press("end")
         return "ok"
 
+    def exit_block(self) -> str:
+        """Put the cursor after the closing brace of the block it's in ("come out of the loop")."""
+        here = self.line().rstrip("\r\n")
+        depth = len(_indent_of(here)) if here.strip() else len(here)
+        for _ in range(60):
+            keys.press("down")
+            time.sleep(0.03)
+            ln = self.line().rstrip("\r\n")
+            if ln.strip().startswith("}") and len(_indent_of(ln)) < depth:
+                keys.press("end")
+                return "ok"
+        return "Not done: I couldn't find the end of this block."
+
     # per editor
     def _selected_text(self, span) -> str: raise NotImplementedError
     def _comment_keys(self, want: bool, mixed: bool): raise NotImplementedError
