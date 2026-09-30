@@ -306,7 +306,7 @@ class Agent:
                 i += 1
                 continue
             log.info("Step %s failed: %s", step.label(), why)
-            if plan.source == "memory":
+            if plan.source in ("memory", "pattern"):
                 self.memory.forget(request)  # it worked before but not now: re-learned below if the repair works
             if repaired or not self.think:
                 return self._stuck(out, executed, why)

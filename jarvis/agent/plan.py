@@ -256,26 +256,34 @@ _CONTEXT_WORDS = re.compile(r"\b(it|this|that|these|those|here|there|them|him|he
 
 class PlanMemory:
     """Requests that worked as a plan once: next time they run from here, with no AI. Checks still run,
-    so a remembered plan that stops working is noticed, repaired, and replaced."""
+    so a remembered plan that stops working is noticed, repaired, and replaced.
+
+    Patterns (Phase 5): a plan that used a word of the request as a value ("search drone on amazon" ->
+    web_search(query="drone", site="amazon")) is also kept as a pattern, "search {x} on amazon", so "search
+    headphones on amazon" runs with no AI too."""
 
     def __init__(self, path: Path = PLANS_FILE):
         self.path = path
         self.lock = threading.Lock()
         try:
-            self.plans: dict[str, dict] = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            self.plans = {}
+            data = {}
+        self.patterns: dict[str, dict] = data.pop(_PATTERNS_KEY, {})
+        self.plans: dict[str, dict] = data
 
     @staticmethod
     def key(text: str) -> str:
         return normalize(text)
 
     def get(self, text: str, tools: dict) -> Plan | None:
-        hit = self.plans.get(self.key(text))
+        hit, source = self.plans.get(self.key(text)), "memory"
+        if not hit:
+            hit, source = self._from_pattern(self.key(text)), "pattern"
         if not hit:
             return None
         try:
-            return parse(hit, tools, source="memory")
+            return parse(hit, tools, source=source)
         except (PlanError, NeedsEyes):
             self.forget(text)  # a tool was renamed or removed since
             return None
@@ -284,28 +292,111 @@ class PlanMemory:
     def worth_keeping(text: str, steps: list[Step]) -> bool:
         key = normalize(text)
         # "it"/"this"/"here" depend on what's on screen now, so the same words can mean something else later.
-        return bool(steps) and 0 < len(key.split()) <= 16 and not _CONTEXT_WORDS.search(key)
+        # A request cut off mid-sentence ("maximize the", 1 Oct: remembered as "maximize Chrome") isn't one.
+        return bool(steps) and 0 < len(key.split()) <= 16 and not _CONTEXT_WORDS.search(key) \
+            and not _DANGLING.search(key)
 
     def learn(self, text: str, steps: list[Step], reply: str):
         if not self.worth_keeping(text, steps):
             return
+        key = self.key(text)
         with self.lock:
-            self.plans[self.key(text)] = {"steps": [s.to_json() for s in steps], "reply": reply}
+            self.plans[key] = {"steps": [s.to_json() for s in steps], "reply": reply}
+            pattern = _pattern(key, steps, reply)
+            if pattern:
+                self.patterns[pattern[0]] = pattern[1]
             self._save()
-        log.info("Remembered a %d-step plan for %r", len(steps), self.key(text))
+        log.info("Remembered a %d-step plan for %r%s", len(steps), key,
+                 f" (and the pattern {pattern[0]!r})" if pattern else "")
 
     def forget(self, text: str):
+        key = self.key(text)
         with self.lock:
-            if self.plans.pop(self.key(text), None) is not None:
+            gone = self.plans.pop(key, None) is not None
+            for p in [p for p in self.patterns if _pattern_regex(p).fullmatch(key)]:
+                self.patterns.pop(p)
+                gone = True
+                log.info("Forgot the pattern %r", p)
+            if gone:
                 self._save()
-                log.info("Forgot the remembered plan for %r", self.key(text))
+                log.info("Forgot the remembered plan for %r", key)
+
+    def _from_pattern(self, key: str) -> dict | None:
+        for p, plan in self.patterns.items():
+            m = _pattern_regex(p).fullmatch(key)
+            if not m:
+                continue
+            x = m.group("x").strip()
+            if not x or len(x.split()) > 8 or _CONTEXT_WORDS.search(x) or _MORE_PARTS.search(x):
+                continue
+            log.info("Pattern %r with x = %r", p, x)
+            return _fill(plan, x)
+        return None
 
     def _save(self):
         try:
             self.path.parent.mkdir(exist_ok=True)
-            self.path.write_text(json.dumps(self.plans, indent=1, sort_keys=True), encoding="utf-8")
+            data = {**self.plans, **({_PATTERNS_KEY: self.patterns} if self.patterns else {})}
+            self.path.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8")
         except OSError:
             log.warning("Couldn't save remembered plans", exc_info=True)
+
+
+_PATTERNS_KEY = "__patterns__"
+_MORE_PARTS = re.compile(r"\b(and|then|also)\b")  # "search boots and open youtube on amazon": not one value
+_DANGLING = re.compile(r"\b(the|a|an|to|and|of|in|on|my|for|with|at|from)$")
+_SLOT_STOP = {"the", "a", "an", "to", "and", "of", "in", "on", "my", "for", "with", "at", "it", "this", "that",
+              "open", "search", "play", "close", "go", "find", "show", "me", "please", "new", "tab", "window"}
+_URL_ARGS = ("url",)
+
+
+def _pattern_regex(pattern: str) -> re.Pattern:
+    before, _, after = pattern.partition("{x}")
+    return re.compile(re.escape(before) + r"(?P<x>.+?)" + re.escape(after))
+
+
+def _pattern(key: str, steps: list[Step], reply: str) -> tuple[str, dict] | None:
+    """('search {x} on amazon', plan with {x} in its values) when a run of the request's words was used as a
+    step's value; None otherwise. One slot, at least two fixed words around it, never a small word."""
+    words = key.split()
+    for n in range(min(6, len(words) - 2), 0, -1):  # longest slot first
+        for i in range(len(words) - n + 1):
+            slot = " ".join(words[i:i + n])
+            if len(slot) < 3 or all(w in _SLOT_STOP for w in words[i:i + n]):
+                continue
+            rx = re.compile(r"(?<![\w])" + re.escape(slot).replace(r"\ ", r"[\s+_-]+") + r"(?![\w])", re.I)
+            steps_json, used = [], False
+            for s in steps:
+                d = s.to_json()
+                d["args"] = {k: _put_slot(rx, k, v) for k, v in s.args.items()}
+                used |= d["args"] != s.args
+                steps_json.append(d)
+            if not used:
+                continue  # 1 Oct: a slot must really be IN a value, or every request would get the same plan
+            pattern = " ".join(words[:i] + ["{x}"] + words[i + n:])
+            return pattern, {"steps": steps_json, "reply": rx.sub("{x}", reply or "")}
+    return None
+
+
+def _put_slot(rx: re.Pattern, key: str, value):
+    """The value with the slot's words as {x}. In an address only the search part (after '?') counts: the site's
+    own name is not a slot ("open chess com" must not turn into "https://www.{x}")."""
+    if not isinstance(value, str):
+        return value
+    if key in _URL_ARGS:
+        site, q, query = value.partition("?")
+        return site + q + rx.sub("{x}", query) if q else value
+    return rx.sub("{x}", value)
+
+
+def _fill(plan: dict, x: str) -> dict:
+    from urllib.parse import quote_plus
+    steps = []
+    for d in plan["steps"]:
+        args = {k: (v.replace("{x}", quote_plus(x) if k in _URL_ARGS else x) if isinstance(v, str) else v)
+                for k, v in (d.get("args") or {}).items()}
+        steps.append({**d, "args": args, "expect": str(d.get("expect", "")).replace("{x}", x)})
+    return {"steps": steps, "reply": str(plan.get("reply", "")).replace("{x}", x)}
 
 
 # ---- the planner prompt -----------------------------------------------------------

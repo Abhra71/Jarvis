@@ -985,3 +985,42 @@ class PromptDietTest(unittest.TestCase):
         s, _ = planmod.repair_prompt("open claude", TOOLS, [], "open_app", "why", "x", "")
         self.assertIn("code_comment", s)
         self.assertIn("Files and folders", s)
+
+
+class PatternTest(unittest.TestCase):
+    """Phase 5: a plan learned for 'search drone on amazon' works for any thing to search."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.mem = planmod.PlanMemory(Path(self.tmp.name) / "plans.json")
+
+    def test_a_value_from_the_request_becomes_a_pattern(self):
+        self.mem.learn("Search drone on Amazon.", [planmod.Step("web_search", {"query": "drone", "site": "amazon"})],
+                       "Searching Amazon for drone.")
+        again = planmod.PlanMemory(self.mem.path)  # kept on disk
+        p = again.get("search wireless headphones on amazon", TOOLS)
+        self.assertEqual((p.source, p.steps[0].args), ("pattern", {"query": "wireless headphones", "site": "amazon"}))
+        self.assertEqual(p.reply, "Searching Amazon for wireless headphones.")
+        self.assertIsNone(again.get("search boots and open youtube on amazon", TOOLS))  # two requests
+
+    def test_search_addresses_are_filled_encoded(self):
+        self.mem.learn("find cheap drones on flipkart",
+                       [planmod.Step("open_website", {"url": "https://www.flipkart.com/search?q=cheap+drones"})], "ok")
+        p = self.mem.get("find gaming mouse on flipkart", TOOLS)
+        self.assertEqual(p.steps[0].args["url"], "https://www.flipkart.com/search?q=gaming+mouse")
+
+    def test_no_pattern_without_a_real_slot(self):
+        self.mem.learn("open chess com in main profile", [planmod.Step("open_website", {"url": "https://www.chess.com"})],
+                       "Opened chess.com")
+        self.assertEqual(self.mem.patterns, {})  # the site's own name is not a value to swap
+        self.assertIsNone(self.mem.get("open youtube in main profile", TOOLS))
+
+    def test_a_failing_pattern_is_forgotten(self):
+        self.mem.learn("search drone on amazon", [planmod.Step("web_search", {"query": "drone", "site": "amazon"})], "")
+        self.mem.forget("search boots on amazon")
+        self.assertEqual(self.mem.patterns, {})
+
+    def test_cut_off_requests_are_not_remembered(self):
+        self.mem.learn("maximize the", [planmod.Step("window", {"app": "chrome", "action": "maximize"})], "")
+        self.assertEqual(self.mem.plans, {})
