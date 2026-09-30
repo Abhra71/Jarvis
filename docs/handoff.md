@@ -44,7 +44,7 @@ Run the **whole PC by voice**: sit back and do ~99% of computer work reliably, f
 1. **Agent core**: design and task suite in `docs/agent-core.md`. Build it there.
 2. **Remaining abilities**: dictation, Bluetooth/Wi-Fi/brightness/night light, WhatsApp desktop + Gmail, file-upload dialogs, voice coding (VS Code C++, BlueJ), game on/off (eFootball).
 3. **Better logging**, then the user's 2–3 day trial, then a log review and fixes.
-4. **Self-healing**: corrections, visible names, per-app notes, daily self-review, "forget that".
+4. **Self-healing**: corrections, visible names, per-app notes (site notes Jarvis writes for itself: search address, pop-ups, menus), **pattern learning** ("search X on Amazon" learned once works for any X; approved 30 Sep), daily self-review, "forget that".
 5. **Chess** last.
 
 Report the % done at each phase end.
