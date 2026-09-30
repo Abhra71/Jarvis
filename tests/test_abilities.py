@@ -79,6 +79,23 @@ class MatchTest(unittest.TestCase):
             press.side_effect = None  # the window doesn't move (30 Sep: a full-screen video ignored the snap)
             self.assertEqual(abilities.run("snap_right"), "Not done: the window didn't move to the right half.")
 
+    def test_newest_file_of_a_kind(self):
+        import os
+        from jarvis.abilities import files as af
+        with tempfile.TemporaryDirectory() as d:
+            for i, name in enumerate(["old.pdf", "new.pdf", "newer.png", "half.pdf.crdownload"]):
+                (Path(d) / name).write_text("x")
+                os.utime(Path(d) / name, (1000 + i, 1000 + i))
+            with mock.patch.object(af.files, "resolve", return_value=Path(d)), \
+                    mock.patch.object(af.files, "show_in_explorer") as show, \
+                    mock.patch.object(af, "_wait_for_explorer", return_value=True):
+                reply = abilities.handle("Open my Downloads and find the newest PDF")
+                self.assertTrue(reply.startswith("The newest PDF in Downloads is new, from"), reply)
+                self.assertTrue(reply.endswith("selected in File Explorer."))
+                show.assert_called_once_with(str(Path(d) / "new.pdf"))
+                self.assertIn("newer", abilities.handle("where is my latest download"))
+                self.assertEqual(abilities.handle("find the newest video"), "There's no video in Downloads.")
+
     def test_catalog_for_the_ai_is_short(self):
         self.assertLess(len(abilities.catalog_text()), 200)
         self.assertIn("snap_left", abilities.declaration()["parameters"]["properties"]["ability"]["enum"])
