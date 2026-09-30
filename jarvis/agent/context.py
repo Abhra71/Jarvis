@@ -32,6 +32,11 @@ def _ocr() -> list[str]:
     return ocr.read_front()
 
 
+def _playing() -> bool | None:
+    from . import ocr
+    return ocr.playing()
+
+
 @dataclass
 class Readers:
     front: Callable[[], str] = desktop.front_window          # "chrome: YouTube - Google Chrome"
@@ -40,10 +45,14 @@ class Readers:
     url: Callable[[], str | None] = _url                     # the front browser tab's address
     focus: Callable[[], str] = elements.focused_kind          # "field", "document", "button"…
     ocr: Callable[[], list[str]] = _ocr                       # text lines read off the front window's pixels
+    dialog: Callable[[], str] = elements.open_dialog          # a dialog box open in front ("" = none)
+    fullscreen: Callable[[], bool] = elements.is_fullscreen   # the front window covers the whole monitor
+    playing: Callable[[], bool | None] = _playing             # any media playing (None = no media at all)
 
 
-_EMPTY = {"front": "", "windows": [], "items": [], "url": None, "focus": "none", "ocr": []}
-_PRIVATE = ("items", "focus", "ocr")  # never read inside a secrets file's window
+_EMPTY = {"front": "", "windows": [], "items": [], "url": None, "focus": "none", "ocr": [], "dialog": "",
+          "fullscreen": False, "playing": None}
+_PRIVATE = ("items", "focus", "ocr", "dialog")  # never read inside a secrets file's window
 
 
 @dataclass
@@ -89,6 +98,18 @@ class Snapshot:
     def ocr(self) -> list[str]:
         return self._get("ocr") or []
 
+    @property
+    def dialog(self) -> str:
+        return self._get("dialog") or ""
+
+    @property
+    def fullscreen(self) -> bool:
+        return bool(self._get("fullscreen"))
+
+    @property
+    def playing(self) -> bool | None:
+        return self._get("playing")
+
     def text(self, max_items: int = 40, max_windows: int = 8) -> str:
         """For the AI planner: short, and only facts."""
         lines = [f"Front window: {self.front or 'none'}"]
@@ -97,6 +118,12 @@ class Snapshot:
             lines.append("Other windows: " + " | ".join(others))
         if self.url:
             lines.append(f"Address: {self.url}")
+        if self.dialog:
+            lines.append(f"A DIALOG BOX IS OPEN in front: {self.dialog!r} (deal with it first: keys and clicks go to it)")
+        if self.fullscreen:
+            lines.append("The front window is in full screen.")
+        if self.playing is not None:
+            lines.append(f"Media: {'playing' if self.playing else 'paused'}")
         items = self.items
         if items:
             shown = "; ".join(el.label() for el in items[:max_items])

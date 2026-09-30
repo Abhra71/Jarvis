@@ -114,6 +114,19 @@ def _step(d: dict, tools: dict) -> Step:
     return Step(name, clean, check, str(d.get("say") or "").strip())
 
 
+# Abilities that act on the FRONT window: named with a window ("snap_left" + "Google Chrome"), that window is
+# brought to the front first (30 Sep dry run: it would have snapped whatever was in front).
+FRONT_WINDOW_ABILITIES = {"snap_left", "snap_right", "maximize_front", "minimize_front", "other_screen"}
+
+
+def _expand(step: Step) -> list[Step]:
+    target = step.args.get("value") if step.tool == "do" else None
+    if target and step.args.get("ability") in FRONT_WINDOW_ABILITIES:
+        focus = Step("window", {"app": str(target), "action": "focus"}, checks.Check("window", str(target)))
+        return [focus, Step("do", {"ability": step.args["ability"]}, None, step.say)]
+    return [step]
+
+
 def parse(raw, tools: dict, source: str = "ai") -> Plan:
     """The AI's JSON -> a Plan whose every step names a real tool with valid args. Raises PlanError/NeedsEyes."""
     data = _json(raw)
@@ -124,7 +137,7 @@ def parse(raw, tools: dict, source: str = "ai") -> Plan:
         raise PlanError("steps must be a list")
     if len(steps) > MAX_STEPS:
         raise PlanError(f"{len(steps)} steps is too many")
-    plan = Plan([_step(s, tools) for s in steps], str(data.get("reply") or "").strip(),
+    plan = Plan([x for s in steps for x in _expand(_step(s, tools))], str(data.get("reply") or "").strip(),
                 str(data.get("ask") or "").strip(), source)
     if not plan.steps and not plan.reply and not plan.ask:
         raise PlanError("empty plan")
@@ -243,16 +256,19 @@ Or {"reply": "..."} alone to just answer (questions, chat); {"ask": "<one short 
 unclear or garbled; {"need_eyes": true} only if it needs to SEE pictures, video thumbnails, a game board or \
 unnamed icons.
 Rules:
-- Fewest steps, fastest way: ability > shortcut (press_key) > direct URL / web_search / site_search > \
-click_element by name. Never guess screen positions.
-- click_element uses a name from "On screen", or, right after opening something, the name you expect there; \
-the check after each step verifies it.
+- Fewest steps, fastest way: ability > youtube tool > shortcut (press_key) > direct URL / web_search / site_search > click_element by name. Never guess screen positions.
+- Apps: open_app (installed desktop app, the default; don't ask "desktop or web?") or window focus if it's already open. Never click desktop or taskbar icons.
+- click_element takes a name from "On screen" (or text read from the screen), or, right after opening something, the name you expect there. When the next clicks depend on a page that's still loading or changing (search results, a site's menus), put {"do": "look_again"} there: you'll see the new screen and plan the rest.
+- Abilities that take a value need it: {"do": "open_settings", "args": {"value": "bluetooth"}}. snap_left/right, maximize_front, minimize_front, other_screen act on the front window; to act on another, give its name as value.
+- Files and folders: short paths work ("Downloads", "Desktop/Trips", "Documents/cv.pdf"); never guess full paths or %USERNAME%.
+- A request that goes deeper than the first page ("PW, my batch, chemistry"): open it, then {"do": "look_again"}; you'll see the page and continue. Don't stop at the first page.
+- If the tools can't finish it, do what they can and make "reply" say exactly what's done and what's left ("I opened Bluetooth settings; I can't connect headphones by myself yet.").
 - To type into a box: focus it first (its shortcut, or click_element on the field), then type_text.
-- "expect" after every step that changes the screen: "window: X" (front app/title), "open: X", "closed: X", \
-"element: X" (a named button/link/field), "text: X" (visible), "focus: field", "url: X". "" when the tool's own \
-result is enough (volume, media, timers, files).
+- If "A DIALOG BOX IS OPEN", answer it first (click its button, or press esc) before anything else.
+- "expect" = how to SEE that the step worked: something that changes because of it. "window: X" (front app/title), "open: X", "closed: X", "element: X" (a named item that appears), "not element: X" (one that goes away, e.g. a dialog's button after clicking it), "text: X", "focus: field", "url: X", "playing", "paused", "fullscreen", "not fullscreen", "not dialog". Never the item you just clicked, never a label you guess. "" when nothing visible changes (volume, timers, files); Jarvis then says it couldn't confirm.
 - Sending, posting, buying, deleting: include that step; Jarvis itself asks the user before doing it.
 - Do only what was asked. "It"/"that" = the recent context below.
+- "reply": the result in the user's words ("Playing it in full screen."), only what the steps really do.
 - "say" only on a slow first step the user will notice, 2-4 words ("Opening WhatsApp").
 - Never type passwords or card numbers.
 Tools:

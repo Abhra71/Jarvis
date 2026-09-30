@@ -1,14 +1,22 @@
-"""'Did that step work?': a check the plan attaches to a step, tested in code against a fresh snapshot.
+"""'Did that step work?': a check attached to a step, tested in code against a fresh snapshot.
 
 Written the way the AI writes them in a plan, "kind: value", optionally "not kind: value":
     window: WhatsApp          the front window's app or title has "WhatsApp"
     open: Visual Studio Code  some open window has it
-    closed: YouTube           no open window has it
+    closed: YouTube           a window with it closed (fewer than before, or none left)
     element: Search           a named item (button/link/field…) is on screen
     text: Mom                 visible anywhere: item names, the title, or the OCR text
     focus: field              the keyboard focus is in something you can type into
     url: youtube.com/watch    the front tab's address has it
+    playing / paused          media (any app's video or music) is playing / paused
+    fullscreen / not fullscreen
+    dialog / not dialog       a dialog box is open in front
 Text only, never a screenshot. Apps take a moment to open, so run.py polls a check for a short while.
+
+A check proves a step worked only if it CHANGED because of the step. One that was already true before
+(29 Sep: "press F" checked "window: PW Video Player", true before and after) proves nothing, so the
+step counts as unconfirmed and Jarvis doesn't claim it worked. Some steps get a better check from code
+than the AI's guess (auto_check): keys that toggle full screen or play/pause, closing windows.
 """
 
 import re
@@ -19,10 +27,13 @@ from rapidfuzz import fuzz
 from ..skills import elements
 from .context import Snapshot
 
-KINDS = ("window", "open", "closed", "element", "text", "focus", "url")
+KINDS = ("window", "open", "closed", "element", "text", "focus", "url", "playing", "paused", "fullscreen",
+         "dialog")
+_NO_VALUE = ("playing", "paused", "fullscreen", "dialog")
 _ALIASES = {"title": "window", "front": "window", "app": "window", "item": "element", "button": "element",
             "link": "element", "field": "element", "visible": "text", "shows": "text", "address": "url",
-            "gone": "closed"}
+            "gone": "closed", "full screen": "fullscreen", "full_screen": "fullscreen", "play": "playing",
+            "pause": "paused", "media": "playing"}
 _TYPABLE = {"field", "document", "dropdown"}
 
 
@@ -33,33 +44,40 @@ class BadCheck(ValueError):
 @dataclass(frozen=True)
 class Check:
     kind: str
-    value: str
+    value: str = ""
     negate: bool = False
 
     def __str__(self):
-        return f"{'not ' if self.negate else ''}{self.kind}: {self.value}"
+        v = f": {self.value}" if self.value else ""
+        return f"{'not ' if self.negate else ''}{self.kind}{v}"
 
 
 def parse(expect) -> Check | None:
-    """'window: WhatsApp' / {'window': 'WhatsApp'} / '' -> Check or None. Raises BadCheck."""
+    """'window: WhatsApp' / {'window': 'WhatsApp'} / 'playing' / '' -> Check or None. Raises BadCheck."""
     if expect is None or expect == "" or expect == {}:
         return None
     if isinstance(expect, dict):
         if len(expect) != 1:
             raise BadCheck(f"one check per step, got {expect}")
         (kind, value), = expect.items()
-        expect = f"{kind}: {value}"
-    m = re.fullmatch(r"\s*(not\s+)?([a-z_ ]+?)\s*[:=]\s*(.+?)\s*", str(expect), re.I | re.S)
+        expect = f"{kind}: {value}" if value not in (True, None, "") else kind
+    text = str(expect).strip()
+    m = re.fullmatch(r"(not\s+)?([a-z_ ]+?)(?:\s*[:=]\s*(.*?))?\s*", text, re.I | re.S)
     if not m:
         raise BadCheck(f"checks look like 'window: WhatsApp', got {expect!r}")
     kind = m.group(2).lower().strip()
     kind = _ALIASES.get(kind, kind)
+    negate = bool(m.group(1))
     if kind not in KINDS:
         raise BadCheck(f"unknown check {kind!r}; use one of {', '.join(KINDS)}")
-    value = m.group(3).strip().strip("\"'")
+    value = (m.group(3) or "").strip().strip("\"'")
+    if kind in _NO_VALUE:
+        if kind == "paused":
+            kind, negate = "playing", not negate
+        return Check(kind, "", negate)
     if not value:
         raise BadCheck("a check needs a value")
-    return Check(kind, value, bool(m.group(1)))
+    return Check(kind, value, negate)
 
 
 def _norm(s: str) -> str:
@@ -76,20 +94,30 @@ def _has(haystack: str, needle: str) -> bool:
     return len(n) >= 4 and fuzz.partial_ratio(n, h) >= 88
 
 
+_WINDOW_ALIASES = {"vs code": "visual studio code", "file explorer": "explorer", "explorer": "file explorer",
+                   "chrome": "google chrome", "edge": "microsoft edge"}
+
+
 def _window_has(w: str, value: str) -> bool:
     """'code: main.cpp - Visual Studio Code' has 'vs code', 'visual studio code' and 'code'."""
-    aliases = {"vs code": "visual studio code", "file explorer": "explorer", "explorer": "file explorer",
-               "chrome": "google chrome", "edge": "microsoft edge"}
-    return _has(w, value) or (value.lower() in aliases and _has(w, aliases[value.lower()]))
+    alias = _WINDOW_ALIASES.get(value.lower())
+    return _has(w, value) or bool(alias and _has(w, alias))
 
 
-def _holds(c: Check, snap: Snapshot) -> bool:
+def _count(snap: Snapshot, value: str) -> int:
+    return sum(_window_has(w, value) for w in snap.windows)
+
+
+def _holds(c: Check, snap: Snapshot, before: Snapshot | None) -> bool:
     v = c.value
     if c.kind == "window":
         return _window_has(snap.front, v)
-    if c.kind in ("open", "closed"):
-        found = any(_window_has(w, v) for w in snap.windows)
-        return found if c.kind == "open" else not found
+    if c.kind == "open":
+        return _count(snap, v) > 0
+    if c.kind == "closed":
+        now = _count(snap, v)
+        # "Close it" with two Chrome windows open closes one: that's success (29 Sep it said "stuck").
+        return now == 0 or (before is not None and now < _count(before, v))
     if c.kind == "element":
         el, why = elements.match(snap.items, v)
         return el is not None or why.startswith("More than one")
@@ -102,17 +130,70 @@ def _holds(c: Check, snap: Snapshot) -> bool:
         return snap.focus in _TYPABLE if want in ("field", "edit", "text box", "typable", "input") else snap.focus == want
     if c.kind == "url":
         return _has(snap.url or "", v)
+    if c.kind == "playing":
+        return snap.playing is True
+    if c.kind == "fullscreen":
+        return snap.fullscreen
+    if c.kind == "dialog":
+        return bool(snap.dialog)
     return False
 
 
-def holds(c: Check, snap: Snapshot) -> bool:
-    return _holds(c, snap) != c.negate
+def holds(c: Check, snap: Snapshot, before: Snapshot | None = None) -> bool:
+    if c.kind == "closed" and c.negate:
+        return not _holds(Check("closed", c.value), snap, None)
+    return _holds(c, snap, before) != c.negate
+
+
+def proves_nothing(c: Check, before: Snapshot) -> bool:
+    """Was it already true before the step? Then it can't show that the step did anything."""
+    if c.kind == "closed" and not c.negate:
+        return _count(before, c.value) == 0  # nothing to close in the first place
+    return holds(c, before)
+
+
+# ---- better checks from code -----------------------------------------------------------
+
+_FULLSCREEN_KEYS = {"f", "f11"}
+_PLAY_KEYS = {"k", "space", "spacebar", "playpause", "play_pause"}
+
+
+def auto_check(tool: str, args: dict, check: Check | None, before: Snapshot) -> Check | None:
+    """The check to use for this step: code knows better than the AI for some steps, and some AI checks
+    can never prove anything (checking for the very item just clicked, guessing a label after a key)."""
+    key = str(args.get("key", "")).strip().lower() if tool == "press_key" else ""
+    yt = _norm(args.get("command", "")) if tool == "youtube" else ""
+    media = str(args.get("action", "")) if tool == "media" else ""
+    if key in _FULLSCREEN_KEYS or re.search(r"\bfull ?screen\b", yt):
+        leaving = before.fullscreen or re.search(r"\b(exit|leave|close)\b", yt)
+        return Check("fullscreen", "", bool(leaving))
+    if (key in _PLAY_KEYS or media == "play_pause" or re.fullmatch(r"(pause|play|resume)( .*)?", yt or "-")) \
+            and before.playing is not None:
+        return Check("playing", "", bool(before.playing))  # it flips: playing -> paused, paused -> playing
+    if tool == "window" and args.get("action") in ("close", "close_all") and args.get("app"):
+        return Check("closed", str(args["app"]))
+    if tool == "youtube":
+        return None  # the pack presses the player's own buttons and reports what it found; AI guesses add nothing
+    if check is None:
+        return None
+    if tool == "click_element" and check.kind == "element" and not check.negate \
+            and _norm(check.value) == _norm(args.get("name", "")):
+        return None  # "click Cancel, expect Cancel" (29 Sep): the thing clicked isn't the result
+    if tool in ("press_key", "type_text") and check.kind == "text":
+        return None  # a guessed label ("text: Playing", "text: commented") after keys: not evidence
+    return check
 
 
 def explain(c: Check, snap: Snapshot) -> str:
     """Why it failed, in plain words: spoken to the user when stuck, and given to the repair call."""
     v = c.value
     front = (snap.front or "nothing").split(":", 1)[0]
+    if c.kind == "playing":
+        return "the media is still playing." if c.negate else "nothing started playing."
+    if c.kind == "fullscreen":
+        return "it's still in full screen." if c.negate else "it didn't go full screen."
+    if c.kind == "dialog":
+        return f"the dialog box {snap.dialog!r} is still open." if c.negate else "no dialog box opened."
     if c.negate:
         return f"{v} is still there."
     return {

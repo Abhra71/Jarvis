@@ -1,10 +1,14 @@
-"""Windows' own text reading (OCR): offline, free, no AI. The agent's backup eyes for windows that don't
-name their buttons (games, some web apps, pictures of text).
+"""Windows' own text reading (OCR) and media status: offline, free, no AI.
 
-Windows 10/11 ship an OCR engine (Windows.Media.Ocr). Python can't reach it without extra compiled
-packages (which Smart App Control may block), so a small PowerShell helper does the reading. It starts on
-first use, stays running while it's being used (~0.2-0.4 s a read instead of ~2 s to start PowerShell
-each time) and exits after IDLE_SECONDS, like the GPU hearing: nothing runs while Jarvis just waits.
+OCR is the agent's backup eyes for windows that don't name their buttons (games, some web and Electron
+apps, pictures of text). It returns each line's position too, so Jarvis can click text it reads.
+Media status is what Windows' media keys see: whether any app (Chrome, Spotify…) is playing or paused.
+That's how "resume the video" is checked, even in full screen, where a player hides its buttons.
+
+Python can't reach these Windows features without extra compiled packages (which Smart App Control may
+block), so a small PowerShell helper does it. It starts on first use, stays running while it's being used
+(~0.1-0.3 s a read instead of ~2 s to start PowerShell) and exits after IDLE_SECONDS, like the GPU hearing:
+nothing runs while Jarvis just waits.
 """
 
 import logging
@@ -13,37 +17,60 @@ import subprocess
 import tempfile
 import threading
 import time
+from dataclasses import dataclass, field
+
+from rapidfuzz import fuzz
 
 log = logging.getLogger(__name__)
 
 IDLE_SECONDS = 120
 READ_TIMEOUT = 6.0
 
-# Reads image paths from stdin, one per line; answers each with the text lines, then a line "<<END>>".
+# stdin: an image path (answer: "L|W <tab> x,y,w,h <tab> text" per line/word) or "::media" (answer:
+# "app <tab> status" per media session). Each answer ends with "<<END>>".
 _SCRIPT = r"""
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]
 $null = [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime]
 $null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics, ContentType = WindowsRuntime]
+$null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
 $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
     $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and
     $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
 function Await($op, [Type]$type) {
     $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(-1) | Out-Null; $t.Result }
+function Box($r) { '{0:0},{1:0},{2:0},{3:0}' -f $r.X, $r.Y, $r.Width, $r.Height }
 $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+$media = $null
 [Console]::Out.WriteLine('<<READY>>'); [Console]::Out.Flush()
 while ($true) {
-    $path = [Console]::In.ReadLine()
-    if ($path -eq $null -or $path -eq '') { break }
+    $cmd = [Console]::In.ReadLine()
+    if ($cmd -eq $null -or $cmd -eq '') { break }
     try {
-        $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($path)) ([Windows.Storage.StorageFile])
-        $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
-        $decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
-        $bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
-        $result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
-        foreach ($line in $result.Lines) { [Console]::Out.WriteLine($line.Text) }
-        $stream.Dispose()
+        if ($cmd -eq '::media') {
+            if ($media -eq $null) {
+                $media = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
+            }
+            foreach ($s in $media.GetSessions()) {
+                [Console]::Out.WriteLine($s.SourceAppUserModelId + "`t" + $s.GetPlaybackInfo().PlaybackStatus) }
+        } else {
+            $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($cmd)) ([Windows.Storage.StorageFile])
+            $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+            $decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+            $bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+            $result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
+            foreach ($line in $result.Lines) {
+                $w = $line.Words
+                $x1 = ($w | ForEach-Object { $_.BoundingRect.X } | Measure-Object -Minimum).Minimum
+                $y1 = ($w | ForEach-Object { $_.BoundingRect.Y } | Measure-Object -Minimum).Minimum
+                $x2 = ($w | ForEach-Object { $_.BoundingRect.X + $_.BoundingRect.Width } | Measure-Object -Maximum).Maximum
+                $y2 = ($w | ForEach-Object { $_.BoundingRect.Y + $_.BoundingRect.Height } | Measure-Object -Maximum).Maximum
+                [Console]::Out.WriteLine(('L' + "`t" + ('{0:0},{1:0},{2:0},{3:0}' -f $x1, $y1, ($x2 - $x1), ($y2 - $y1)) + "`t" + $line.Text))
+                foreach ($word in $w) { [Console]::Out.WriteLine('W' + "`t" + (Box $word.BoundingRect) + "`t" + $word.Text) }
+            }
+            $stream.Dispose()
+        }
     } catch { [Console]::Out.WriteLine('<<ERROR>> ' + $_.Exception.Message) }
     [Console]::Out.WriteLine('<<END>>'); [Console]::Out.Flush()
 }
@@ -106,49 +133,143 @@ class _Worker:
                 pass
         self.proc = None
 
-    def read(self, image_path: str) -> list[str]:
+    def ask(self, command: str) -> list[str]:
         with self.lock:
             self.last_used = time.monotonic()
             if not self.proc or self.proc.poll() is not None:
                 self._start()
-            self.proc.stdin.write(image_path + "\n")
+            self.proc.stdin.write(command + "\n")
             self.proc.stdin.flush()
             lines = self._wait_for("<<END>>", READ_TIMEOUT)
             self.last_used = time.monotonic()
             if lines is None:
                 self.stop()  # stuck: start fresh next time
-                raise RuntimeError("OCR took too long")
+                raise RuntimeError("the Windows helper took too long")
         if lines and lines[0].startswith("<<ERROR>>"):
             raise RuntimeError(lines[0][10:])
-        return [ln.strip() for ln in lines if ln.strip()]
+        return [ln for ln in lines if ln.strip()]
 
 
 _worker = _Worker()
 
 
-def read_image(path: str) -> list[str]:
-    return _worker.read(os.path.abspath(path))
+# ---- text with positions ---------------------------------------------------------------
+
+@dataclass
+class Line:
+    text: str
+    rect: tuple[int, int, int, int]                  # left, top, right, bottom in screen pixels
+    words: list[tuple[str, tuple]] = field(default_factory=list)
 
 
-def read_front(max_width: int = 1600) -> list[str]:
-    """The text lines in the front window, top to bottom."""
+_last: list[Line] = []  # the latest read, for clicking text by name
+
+
+def _rect(box: str, scale: float, ox: int, oy: int) -> tuple[int, int, int, int]:
+    x, y, w, h = (float(v) for v in box.split(","))
+    return (round(ox + x * scale), round(oy + y * scale), round(ox + (x + w) * scale), round(oy + (y + h) * scale))
+
+
+def parse_lines(raw: list[str], scale: float = 1.0, ox: int = 0, oy: int = 0) -> list[Line]:
+    lines: list[Line] = []
+    for row in raw:
+        kind, _, rest = row.partition("\t")
+        box, _, text = rest.partition("\t")
+        try:
+            rect = _rect(box, scale, ox, oy)
+        except ValueError:
+            continue
+        if kind == "L":
+            lines.append(Line(text.strip(), rect))
+        elif kind == "W" and lines:
+            lines[-1].words.append((text.strip(), rect))
+    return [ln for ln in lines if ln.text]
+
+
+def read_image_lines(path: str) -> list[Line]:
+    return parse_lines(_worker.ask(os.path.abspath(path)))
+
+
+def read_front_lines(max_width: int = 1600) -> list[Line]:
+    """The text lines in the front window, top to bottom, with where they are on screen."""
+    global _last
     import win32gui
     from PIL import ImageGrab
 
     t0 = time.monotonic()
     l, t, r, b = win32gui.GetWindowRect(win32gui.GetForegroundWindow())
-    img = ImageGrab.grab(bbox=(max(l, 0), max(t, 0), r, b), all_screens=True)
+    l, t = max(l, 0), max(t, 0)
+    img = ImageGrab.grab(bbox=(l, t, r, b), all_screens=True)
+    scale = 1.0
     if img.width > max_width:
-        img = img.resize((max_width, round(img.height * max_width / img.width)))
+        scale = img.width / max_width
+        img = img.resize((max_width, round(img.height / scale)))
     fd, path = tempfile.mkstemp(suffix=".png", prefix="jarvis_ocr_")
     os.close(fd)
     try:
         img.save(path)
-        lines = read_image(path)
+        _last = parse_lines(_worker.ask(path), scale, l, t)
     finally:
         try:
             os.remove(path)
         except OSError:
             pass
-    log.info("OCR read %d lines in %.2fs", len(lines), time.monotonic() - t0)
-    return lines
+    log.info("OCR read %d lines in %.2fs", len(_last), time.monotonic() - t0)
+    return _last
+
+
+def read_front() -> list[str]:
+    return [ln.text for ln in read_front_lines()]
+
+
+def find(name: str, lines: list[Line] | None = None) -> tuple[str, tuple] | None:
+    """The on-screen text that best matches `name` (a whole line, or a run of words inside one), with its
+    screen rectangle; None if nothing matches well or it's ambiguous."""
+    want = " ".join((name or "").lower().split())
+    if not want:
+        return None
+    best: list[tuple[float, str, tuple]] = []
+    n_words = len(want.split())
+    for ln in (lines if lines is not None else _last):
+        cands = [(ln.text, ln.rect)]
+        ws = ln.words
+        for size in {n_words, n_words + 1, max(1, n_words - 1)}:
+            for i in range(0, max(0, len(ws) - size + 1)):
+                run = ws[i:i + size]
+                text = " ".join(w for w, _ in run)
+                rect = (min(r[0] for _, r in run), min(r[1] for _, r in run),
+                        max(r[2] for _, r in run), max(r[3] for _, r in run))
+                cands.append((text, rect))
+        for text, rect in cands:
+            score = fuzz.ratio(want, " ".join(text.lower().split()))
+            best.append((score, text, rect))
+    if not best:
+        return None
+    best.sort(key=lambda s: -s[0])
+    score, text, rect = best[0]
+    if score < 80:
+        return None
+    rivals = [b for b in best[1:] if b[0] >= score - 2 and b[2] != rect and b[1].lower() != text.lower()]
+    if any(abs(b[2][1] - rect[1]) > 5 for b in rivals if b[0] >= score):
+        return None  # the same words twice in different places: don't guess
+    return text, rect
+
+
+# ---- media status ------------------------------------------------------------------------
+
+def media_status() -> dict[str, str]:
+    """{app id: 'Playing' | 'Paused' | 'Stopped' | …} for every media session Windows knows about."""
+    out = {}
+    for row in _worker.ask("::media"):
+        app, _, status = row.partition("\t")
+        if app:
+            out[app] = status.strip()
+    return out
+
+
+def playing() -> bool | None:
+    """True if anything is playing, False if something is paused/stopped, None if no media at all."""
+    status = media_status()
+    if not status:
+        return None
+    return any(s == "Playing" for s in status.values())

@@ -28,7 +28,9 @@ API = "https://generativelanguage.googleapis.com/v1beta"
 
 # The system prompt is built from sections: each request carries only the rules its kind of job needs
 # (router.py decides the kind). Every word is paid for in tokens on every request, so keep them short.
-_CORE = """You are Jarvis, a voice assistant on the user's Windows PC. Replies are read aloud: one or two \
+_CORE = """You are Jarvis, a voice assistant on the user's Windows PC. The user built you themselves, with \
+Anthropic's Claude writing the code; you think with free AI models from Groq and Google Gemini. You were not made \
+by OpenAI or any other company; say so if asked who made you. Replies are read aloud: one or two \
 short spoken sentences, no markdown/lists/URLs. The words come from speech recognition; assume the most sensible \
 meaning. If a request doesn't make sense (just numbers, a garbled phrase), ask what they meant; don't act.
 Answer general knowledge from what you know. Recent or changing facts (news, scores, prices, "latest", "this \
@@ -416,6 +418,7 @@ class Brain:
         self.skills.launches = max(1, len(request_parts(text)))
         self.kind, self.request, self.extra_groups = router.classify(text), text, set()
         log.info("Request kind: %s", self.kind)
+        said = text  # the words alone: the agent is told about shaky speech separately
         if unsure:
             text += "\n(Speech recognition was unsure of these words. If they don't clearly make sense, ask.)"
         self._trim_history()
@@ -426,7 +429,7 @@ class Brain:
         self.skills.screen_fresh = False  # time has passed since any earlier screenshot
         self.screen_items = ""  # the on-screen items as text, when that's enough (no screenshot needed)
         try:
-            reply = self._agent_turn(text, unsure)
+            reply = self._agent_turn(said, unsure)
             if reply is not None:
                 return reply
             if self.kind == "screen" and not router.needs_eyes(text):

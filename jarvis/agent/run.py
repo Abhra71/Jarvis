@@ -31,6 +31,9 @@ _FAILURE_STARTS = ("error", "not allowed", "not done", "not clicked", "unknown",
                    "sorry", "i can only")
 _FAILURE_WORDS = ("doesn't exist", "isn't a", "couldn't find", "won't overwrite", "already exists", "don't see",
                   "may not have worked", "isn't on screen", "nothing called")
+# Their own result sentence doesn't prove anything happened on screen: without a real check they're unconfirmed.
+_UNCHECKABLE = {"press_key", "type_text", "click_element", "media", "browser", "find_on_page"}
+_KEYS_TO_PAGE = {"press_key", "type_text", "youtube", "media", "browser", "find_on_page"}
 _ARG_OBJECTS = ("name", "app", "path", "url", "query", "source")  # what "it" means after a step
 
 
@@ -136,7 +139,7 @@ class Agent:
         if not plan.steps:
             out.result = "asked" if plan.ask else "done"
             return plan.ask or plan.reply
-        return self._execute(text, plan, out)
+        return self._execute(text, plan, out, unsure=unsure)
 
     def _plan(self, out: Outcome, system: str, user: str) -> Plan:
         raw = self._think(out, system, user)
@@ -152,8 +155,9 @@ class Agent:
     # ---- doing and checking ----------------------------------------------------------
 
     def _execute(self, request: str, plan: Plan, out: Outcome, repaired: bool = False,
-                 remember: bool = True) -> str:
+                 remember: bool = True, unsure: bool = False) -> str:
         steps, done, executed, results, narrated, looks, i = list(plan.steps), [], [], [], 0, 0, 0
+        unconfirmed: list[str] = []  # what was done but couldn't be checked: never claimed as a success
         reply = plan.reply
         while i < len(steps):
             step = steps[i]
@@ -181,15 +185,27 @@ class Agent:
             if step.say and len(steps) > 1 and narrated < 2:
                 narrated += 1
                 self.narrate(step.say)
-            result = self.skills.call(step.tool, step.args)
-            if isinstance(result, dict):
-                result = result.get("text", "")
-            result = str(result)
-            if result.startswith("Needs confirmation"):
-                self.pending = Pending(request, steps[i:], reply)
-                out.steps, out.result = len(executed), "needs_yes"
-                return _ask_for_yes(result)
-            why = result if looks_failed(result) else self._verify(step)
+            before = self._snap()
+            why = self._blocked_by_dialog(step, before)
+            # Decide the check and read what it needs NOW, before the step changes the screen.
+            check = checks.auto_check(step.tool, step.args, step.check, before)
+            already = check is not None and checks.proves_nothing(check, before)
+            result = ""
+            if why is None:
+                result = self.skills.call(step.tool, step.args)
+                if isinstance(result, dict):
+                    result = result.get("text", "")
+                result = str(result)
+                if result.startswith("Needs confirmation"):
+                    self.pending = Pending(request, steps[i:], reply)
+                    out.steps, out.result = len(executed), "needs_yes"
+                    return _ask_for_yes(result)
+                if looks_failed(result):
+                    why = result
+                else:
+                    why, confirmed = self._verify(step, check, already, before)
+                    if why is None and not confirmed:
+                        unconfirmed.append(result)
             if why is None:
                 executed.append(step)
                 results.append(result)
@@ -210,30 +226,54 @@ class Agent:
                 fix = parse(self._think(out, system, user), self.tools)
             except (PlanError, NeedsEyes) as e:
                 return self._stuck(out, executed, why, f"repair: {e}")
+            # The same failed step again is not a repair (29 Sep: "click Google Chrome" twice).
+            while fix.steps and fix.steps[0].tool == step.tool and fix.steps[0].args == step.args:
+                fix.steps.pop(0)
             if not fix.steps:
                 out.steps, out.result, out.detail = len(executed), "asked", why
-                return fix.ask or fix.reply or self._stuck(out, executed, why)
+                return fix.ask or self._stuck(out, executed, why)
             steps = steps[:i] + fix.steps
             reply = fix.reply or reply
-        out.steps, out.result = len(executed), "done"
-        if remember and plan.source != "code" and (plan.source == "ai" or repaired):
+        out.steps = len(executed)
+        if unconfirmed:
+            # Done, but not seen to work: say what was done, not what the plan hoped for (29 Sep: "Video resumed
+            # in fullscreen" was said after two unchecked key presses, and neither had worked).
+            out.result, out.detail = "unconfirmed", "; ".join(unconfirmed)
+            said = " ".join(r if r.endswith((".", "!", "?")) else r + "." for r in unconfirmed[-2:])
+            return f"{said} I couldn't confirm it worked on screen."
+        out.result = "done"
+        if remember and not unsure and plan.source != "code" and (plan.source == "ai" or repaired):
             self.memory.learn(request, executed, reply)
         # Code plans have no written reply: say what each step reported ("Playing Lofi Girl. Full screen.").
         return reply or " ".join(results[-3:]) or "Done."
 
-    def _verify(self, step: Step) -> str | None:
-        """None if the step's check came true (waiting a little for apps to appear), else why not."""
-        if not step.check:
+    def _blocked_by_dialog(self, step: Step, before) -> str | None:
+        """Keys typed while a dialog box is open go to the dialog, not the page (29 Sep: F and Space were
+        pressed behind a site's pop-up, and nothing happened)."""
+        if step.tool not in _KEYS_TO_PAGE:
             return None
-        wait = WAIT_LAUNCH if step.tool in LAUNCHES or step.tool in ("web_search", "address_bar", "site_search") \
-            else WAIT_STEP
+        key = str(step.args.get("key", "")).lower()
+        if step.tool == "press_key" and key in ("enter", "esc", "escape", "tab", "shift+tab", "alt+f4"):
+            return None  # answering the dialog itself
+        if before.dialog:
+            return f"A dialog box is open in front ({before.dialog}); it has to be answered first."
+        return None
+
+    def _verify(self, step: Step, check, already: bool, before) -> tuple[str | None, bool]:
+        """(why it failed or None, confirmed). Confirmed only if the check came true BECAUSE of the step."""
+        if check is None:
+            return None, step.tool not in _UNCHECKABLE
+        if already:
+            # Already true before the step: it can't show the step did anything.
+            return None, step.tool not in _UNCHECKABLE
+        wait = WAIT_LAUNCH if step.tool in LAUNCHES or step.tool in ("web_search", "address_bar", "site_search")             else WAIT_STEP
         deadline = self.clock() + wait
         while True:
             snap = self._snap()
-            if checks.holds(step.check, snap):
-                return None
+            if checks.holds(check, snap, before):
+                return None, True
             if self.clock() >= deadline:
-                return checks.explain(step.check, snap)
+                return checks.explain(check, snap), False
             self.sleep(POLL)
 
     def _stuck(self, out: Outcome, executed: list, why: str, extra: str = "") -> str:

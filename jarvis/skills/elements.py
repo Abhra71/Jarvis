@@ -177,6 +177,42 @@ def focused_kind() -> str:
     return ids.get(el.CurrentControlType, "other")
 
 
+_DIALOG_BUTTONS = {"ok", "cancel", "leave", "stay", "allow", "block", "yes", "no", "don't save", "save",
+                   "close", "continue", "reload", "not now", "dismiss"}
+
+
+def open_dialog(hwnd: int | None = None) -> str:
+    """The name of a dialog box open in the front window ("Leave site?", a page's alert…), or "".
+    While one is open, keys and clicks meant for the page go to the dialog instead."""
+    UIA, uia = desktop._uia()
+    root = uia.ElementFromHandle(hwnd or win32gui.GetForegroundWindow())
+    cond = uia.CreateOrCondition(
+        uia.CreatePropertyCondition(UIA.UIA_ControlTypePropertyId, UIA.UIA_WindowControlTypeId),
+        uia.CreatePropertyCondition(UIA.UIA_LocalizedControlTypePropertyId, "dialog"))
+    found = root.FindAll(UIA.TreeScope_Descendants, cond)
+    button = uia.CreatePropertyCondition(UIA.UIA_ControlTypePropertyId, UIA.UIA_ButtonControlTypeId)
+    for i in range(min(found.Length, 5)):
+        dlg = found.GetElement(i)
+        # Only a real dialog: it has the buttons dialogs have (apps nest ordinary windows too).
+        buttons = dlg.FindAll(UIA.TreeScope_Descendants, button)
+        names = {" ".join((buttons.GetElement(j).CurrentName or "").lower().split()) for j in range(buttons.Length)}
+        if names & _DIALOG_BUTTONS:
+            return " ".join((dlg.CurrentName or "a dialog box").split())[:80]
+    return ""
+
+
+def is_fullscreen() -> bool:
+    """Does the front window cover its whole monitor (a video or browser in full screen)? A maximized
+    window leaves the taskbar showing, so it doesn't count."""
+    import win32api
+    hwnd = win32gui.GetForegroundWindow()
+    if not hwnd or win32gui.GetClassName(hwnd) in ("Progman", "WorkerW"):
+        return False
+    l, t, r, b = win32gui.GetWindowRect(hwnd)
+    ml, mt, mr, mb = win32api.GetMonitorInfo(win32api.MonitorFromWindow(hwnd, 2))["Monitor"]
+    return l <= ml and t <= mt and r >= mr and b >= mb
+
+
 def front_is_browser() -> bool:
     try:
         return desktop._process_name(win32gui.GetForegroundWindow()) in desktop.BROWSERS

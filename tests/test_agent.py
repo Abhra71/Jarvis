@@ -40,6 +40,9 @@ class FakeDesktop:
         self.focus = "document"
         self.url = None
         self.ocr = []
+        self.dialog = ""
+        self.fullscreen = False
+        self.playing = None
         self.calls = []
         self.confirmed = False
         self.tools = TOOLS
@@ -48,7 +51,8 @@ class FakeDesktop:
     def readers(self):
         return context.Readers(front=lambda: self.front, windows=lambda: list(self.windows),
                                items=lambda: list(self.items), url=lambda: self.url, focus=lambda: self.focus,
-                               ocr=lambda: list(self.ocr))
+                               ocr=lambda: list(self.ocr), dialog=lambda: self.dialog,
+                               fullscreen=lambda: self.fullscreen, playing=lambda: self.playing)
 
     def open(self, app, items=()):
         self.front = f"{app.lower()}: {app}"
@@ -123,7 +127,8 @@ class SnapshotTest(unittest.TestCase):
     def test_lazy_and_read_once(self):
         items = mock.Mock(return_value=[_el("OK")])
         snap = context.take(context.Readers(front=lambda: "notepad: a.txt", windows=list, items=items,
-                                            url=lambda: None, focus=lambda: "document", ocr=list))
+                                            url=lambda: None, focus=lambda: "document", ocr=list, dialog=str,
+                                            fullscreen=bool, playing=lambda: None))
         self.assertIn("Front window: notepad: a.txt", snap.text())
         snap.items, snap.items
         items.assert_called_once()
@@ -131,13 +136,15 @@ class SnapshotTest(unittest.TestCase):
     def test_never_reads_a_secrets_window(self):
         items = mock.Mock(return_value=[_el("OK")])
         snap = context.take(context.Readers(front=lambda: "notepad: .env - Notepad", windows=list, items=items,
-                                            url=lambda: None, focus=lambda: "document", ocr=list))
+                                            url=lambda: None, focus=lambda: "document", ocr=list, dialog=str,
+                                            fullscreen=bool, playing=lambda: None))
         self.assertEqual(snap.items, [])
         items.assert_not_called()
 
     def test_a_broken_reader_is_just_empty(self):
         snap = context.take(context.Readers(front=lambda: "x: y", windows=list, items=mock.Mock(side_effect=OSError),
-                                            url=lambda: None, focus=lambda: "none", ocr=list))
+                                            url=lambda: None, focus=lambda: "none", ocr=list, dialog=str,
+                                            fullscreen=bool, playing=lambda: None))
         self.assertEqual(snap.items, [])
 
     def test_memory_knows_it(self):
@@ -163,6 +170,23 @@ class PlanTest(unittest.TestCase):
                     "no json here", '{"steps": []}'):
             with self.assertRaises(planmod.PlanError, msg=raw):
                 planmod.parse(raw, TOOLS)
+
+    def test_front_window_abilities_focus_the_named_window_first(self):
+        p = planmod.parse('{"steps": [{"do": "snap_left", "args": {"value": "Google Chrome"}}]}', TOOLS)
+        self.assertEqual([(s.tool, s.args) for s in p.steps],
+                         [("window", {"app": "Google Chrome", "action": "focus"}), ("do", {"ability": "snap_left"})])
+        self.assertEqual(p.steps[0].check, checks.Check("window", "Google Chrome"))
+
+    def test_youtube_code_plans(self):
+        from jarvis.skills.sites import youtube
+        p = planmod.code_plan("play lofi on youtube and make it full screen")
+        self.assertEqual([s.args for s in p.steps], [{"command": "play lofi on youtube"},
+                                                     {"command": "make it full screen"}])
+        p = planmod.code_plan("pause, go back 30 seconds, and turn on subtitles", front="chrome: X - YouTube")
+        self.assertEqual(len(p.steps), 3)
+        self.assertIsNone(planmod.code_plan("pause and turn on subtitles", front="notepad: a.txt"))
+        self.assertTrue(youtube.understands("play the second video"))
+        self.assertFalse(youtube.understands("play it again"))  # context: the AI decides
 
     def test_pictures_go_to_the_seeing_loop(self):
         with self.assertRaises(planmod.NeedsEyes):
@@ -234,7 +258,8 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(agent.last.result, "needs_yes")
         self.assertTrue(agent.has_pending())
         desk.confirmed = True  # the user said yes (brain sets Skills.confirmed)
-        self.assertEqual(agent.resume(), "Sent your message to Mom.")
+        # Enter can't be checked yet (the WhatsApp ability will): said honestly, not "Sent your message".
+        self.assertEqual(agent.resume(), "Pressed enter. I couldn't confirm it worked on screen.")
         self.assertEqual(desk.calls[-1], ("press_key", {"key": "enter"}))
         self.assertFalse(agent.has_pending())
         self.assertEqual(agent.memory.plans, {})  # plans that send are never replayed without thinking
@@ -328,10 +353,121 @@ class AgentTest(unittest.TestCase):
     def test_context_requests_are_not_remembered(self):
         desk = FakeDesktop()
         plan = {"steps": [{"do": "window", "args": {"app": "chrome", "action": "close"}}], "reply": "Closed it."}
+        desk.effects["window"] = lambda a: (desk.windows.pop(0), "Closed Chrome.")[1]
         agent, _ = _agent(desk, [plan], self.tmp.name)
         agent.run("close it")
         self.assertEqual(agent.memory.plans, {})
         self.assertEqual(agent.context.it, "chrome")
+
+
+class HonestyTest(unittest.TestCase):
+    """29 Sep, live: 'Click F and resume the video' was reported as done; nothing had happened."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.desk = FakeDesktop()
+        self.desk.front = "chrome: PW Video Player - Google Chrome"
+        self.desk.windows = [self.desk.front]
+
+    PLAN = {"steps": [{"do": "press_key", "args": {"key": "f"},
+                       "expect": "window: chrome: PW Video Player - Google Chrome"},
+                      {"do": "press_key", "args": {"key": "space"},
+                       "expect": "window: chrome: PW Video Player - Google Chrome"}],
+            "reply": "Video resumed in fullscreen."}
+
+    def test_keys_that_did_nothing_are_not_claimed(self):
+        self.desk.playing = False
+        self.desk.effects["press_key"] = lambda a: f"Pressed {a['key']}."
+        agent, _ = _agent(self.desk, [self.PLAN, {"ask": "Is the video player in front?"}], self.tmp.name)
+        reply = agent.run("click F and resume the video")
+        self.assertNotIn("resumed", reply.lower())
+        self.assertEqual(reply, "Is the video player in front?")  # full screen never came true: repair, then ask
+        self.assertEqual(agent.memory.plans, {})
+
+    def test_keys_that_worked_are_checked_by_code(self):
+        self.desk.playing = False
+
+        def press(a):
+            if a["key"] == "f":
+                self.desk.fullscreen = True
+            if a["key"] == "space":
+                self.desk.playing = True
+            return f"Pressed {a['key']}."
+        self.desk.effects["press_key"] = press
+        agent, _ = _agent(self.desk, [self.PLAN], self.tmp.name)
+        self.assertEqual(agent.run("click F and resume the video"), "Video resumed in fullscreen.")
+        self.assertEqual(agent.last.result, "done")
+        self.assertIn("click f and resume the video", agent.memory.plans)  # verified: remembered
+
+    def test_a_dialog_blocks_keys_until_answered(self):
+        self.desk.dialog = "pw.live says"
+        self.desk.playing = False
+
+        def click(a):
+            self.desk.dialog = ""
+            return "Clicked the Cancel button."
+
+        def press(a):
+            self.desk.playing = True
+            return "Pressed k."
+        self.desk.effects.update(click_element=click, press_key=press)
+        plan = {"steps": [{"do": "press_key", "args": {"key": "k"}, "expect": "playing"}], "reply": "Resumed."}
+        fix = {"steps": [{"do": "click_element", "args": {"name": "Cancel"}, "expect": "not dialog"},
+                         {"do": "press_key", "args": {"key": "k"}, "expect": "playing"}], "reply": "Resumed."}
+        agent, think = _agent(self.desk, [plan, fix], self.tmp.name)
+        self.assertEqual(agent.run("resume the video"), "Resumed.")
+        self.assertIn("dialog box is open", think.call_args_list[1][0][1])
+        self.assertEqual([c[0] for c in self.desk.calls], ["click_element", "press_key"])  # no key behind the dialog
+
+    def test_unchecked_steps_are_said_honestly(self):
+        self.desk.effects["press_key"] = lambda a: "Pressed f5."
+        plan = {"steps": [{"do": "press_key", "args": {"key": "f5"}}], "reply": "Refreshed the page."}
+        agent, _ = _agent(self.desk, [plan], self.tmp.name)
+        self.assertEqual(agent.run("refresh"), "Pressed f5. I couldn't confirm it worked on screen.")
+        self.assertEqual(agent.last.result, "unconfirmed")
+
+    def test_clicked_item_is_not_its_own_proof(self):
+        c = checks.parse("element: Cancel")
+        snap = context.take(self.desk.readers())
+        self.assertIsNone(checks.auto_check("click_element", {"name": "Cancel"}, c, snap))
+        self.assertIsNone(checks.auto_check("press_key", {"key": "k"}, checks.parse("text: Playing"), snap))
+
+    def test_closing_one_of_two_windows_counts(self):
+        self.desk.windows = ["chrome: A - Google Chrome", "chrome: B - Google Chrome"]
+        before = context.take(self.desk.readers())
+        self.assertFalse(checks.proves_nothing(checks.parse("closed: chrome"), before))  # reads it now, as run.py does
+        self.desk.windows = ["chrome: B - Google Chrome"]
+        after = context.take(self.desk.readers())
+        self.assertTrue(checks.holds(checks.parse("closed: chrome"), after, before))
+
+    def test_a_repair_never_repeats_the_failed_step(self):
+        self.desk.front = "explorer: Desktop"
+        self.desk.effects["click_element"] = lambda a: "Clicked the Google Chrome item."
+        step = {"do": "click_element", "args": {"name": "Google Chrome"}, "expect": "window: chrome"}
+        agent, _ = _agent(self.desk, [{"steps": [step]}, {"steps": [step]}], self.tmp.name)
+        reply = agent.run("reopen chrome")
+        self.assertTrue(reply.startswith("I'm stuck"))
+        self.assertEqual(len(self.desk.calls), 1)
+
+    def test_parse_media_checks(self):
+        self.assertEqual(checks.parse("paused"), checks.Check("playing", "", True))
+        self.assertEqual(checks.parse("not fullscreen"), checks.Check("fullscreen", "", True))
+        self.assertEqual(checks.parse({"playing": True}), checks.Check("playing"))
+
+
+class OcrFindTest(unittest.TestCase):
+    def test_find_words_inside_a_line(self):
+        from jarvis.agent import ocr
+        raw = ["L	10,10,200,20	Recents Jarvis agent core",
+               "W	10,10,60,20	Recents", "W	80,10,50,20	Jarvis", "W	135,10,40,20	agent",
+               "W	180,10,30,20	core",
+               "L	10,50,100,20	Settings", "W	10,50,100,20	Settings"]
+        lines = ocr.parse_lines(raw, scale=2.0, ox=100, oy=0)
+        text, rect = ocr.find("jarvis agent core", lines)
+        self.assertEqual(text, "Jarvis agent core")
+        self.assertEqual(rect, (260, 20, 520, 60))  # scaled x2 and moved by the window's position
+        self.assertIsNone(ocr.find("bluetooth", lines))
 
 
 class BrainWiringTest(unittest.TestCase):

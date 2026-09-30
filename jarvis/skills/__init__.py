@@ -338,6 +338,21 @@ class Skills:
         except keys.BadKeys as e:
             return f"Not done: {e}. Examples: 'enter', 'ctrl+c', 'alt+tab', 'win+d', 'ctrl+k ctrl+s'."
 
+    def _text_on_screen(self, name: str) -> "elements.Element | None":
+        """Words read off the screen (Windows' offline OCR) when the app doesn't name its buttons (29 Sep: the
+        Claude app's sidebar chats). Clicked at the words' centre, like a person reading the screen."""
+        from ..agent import ocr
+        try:
+            self._guard_secrets()
+            hit = ocr.find(name, ocr.read_front_lines())
+        except Exception:
+            log.debug("OCR fallback failed", exc_info=True)
+            return None
+        if not hit:
+            return None
+        log.info("Found %r on screen by reading its text", hit[0])
+        return elements.Element("text", hit[0], hit[1])
+
     def _youtube(self, command: str) -> str:
         from .sites import youtube
         return youtube.command(command, self.browser)
@@ -399,6 +414,8 @@ class Skills:
             if args.get("id") is None and not args.get("name"):
                 return "Not done: give the item's id (from page_elements) or its name."
             self._element, why = elements.resolve(args.get("id"), args.get("name"))
+            if not self._element and args.get("name") and why.startswith("Nothing called"):
+                self._element = self._text_on_screen(str(args["name"]))
             if not self._element:
                 return f"Not clicked: {why}"  # "Not clicked" marks it as failed, so it is never spoken as a reply
             args = {**args, "target": self._element.name}
