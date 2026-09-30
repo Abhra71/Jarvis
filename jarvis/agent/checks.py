@@ -159,6 +159,18 @@ _FULLSCREEN_KEYS = {"f", "f11"}
 _PLAY_KEYS = {"k", "space", "spacebar", "playpause", "play_pause"}
 
 
+def too_vague(c: Check) -> bool:
+    """A check almost anything passes can't prove a step worked (30 Sep: "url: https://" after a Google
+    search let the plan claim a Physics Wallah page was open)."""
+    v = _norm(c.value)
+    if c.kind == "url":
+        v = re.sub(r"^(https?:)?/*(www\.)?", "", v).strip("/. ")
+        return len(v) < 3
+    if c.kind in ("text", "element", "window", "open", "closed"):
+        return len(v) < 2
+    return False
+
+
 def auto_check(tool: str, args: dict, check: Check | None, before: Snapshot) -> Check | None:
     """The check to use for this step: code knows better than the AI for some steps, and some AI checks
     can never prove anything (checking for the very item just clicked, guessing a label after a key)."""
@@ -182,7 +194,7 @@ def auto_check(tool: str, args: dict, check: Check | None, before: Snapshot) -> 
         # These check their own result in code (the pack reads the player; snapping checks where the window
         # went). An AI guess on top only adds false failures (30 Sep: "text: Chrome snapped left").
         return None
-    if check is None:
+    if check is None or too_vague(check):
         return None
     if tool == "click_element" and check.kind == "element" and not check.negate \
             and _norm(check.value) == _norm(args.get("name", "")):

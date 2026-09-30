@@ -59,6 +59,8 @@ def _read(hwnd: int) -> list[Element]:
     # In a browser, only the web page: tabs and the address bar have their own tools.
     doc = root.FindFirst(UIA.TreeScope_Descendants, uia.CreatePropertyCondition(
         UIA.UIA_ControlTypePropertyId, UIA.UIA_DocumentControlTypeId))
+    if not doc and desktop._process_name(hwnd) in desktop.BROWSERS:
+        return []  # the page isn't there yet: Chrome's own buttons ("Tab search") aren't the page (30 Sep)
     scope = doc or root
     ids = {getattr(UIA, f"UIA_{k}ControlTypeId"): v for k, v in _KINDS.items()}
     cond = None

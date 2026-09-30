@@ -282,6 +282,7 @@ Rules:
 - click_element takes a name from "On screen" (or text read from the screen), or, right after opening something, the name you expect there. When the next clicks depend on a page that's still loading or changing (search results, a site's menus), put {"do": "look_again"} there: you'll see the new screen and plan the rest.
 - Abilities that take a value need it: {"do": "open_settings", "args": {"value": "bluetooth"}}. snap_left/right, maximize_front, minimize_front, other_screen act on the front window; to act on another, give its name as value.
 - Files and folders: short paths work ("Downloads", "Desktop/Trips", "Documents/cv.pdf"); never guess full paths or %USERNAME%.
+- web_search only to search the web. To open a site, or a page inside it, use open_website (its address), then look_again.
 - A request that goes deeper than the first page ("PW, my batch, chemistry"): open it, then {"do": "look_again"}; you'll see the page and continue. Don't stop at the first page.
 - If the tools can't finish it, do what they can and make "reply" say exactly what's done and what's left ("I opened Bluetooth settings; I can't connect headphones by myself yet.").
 - To type into a box: focus it first (its shortcut, or click_element on the field), then type_text.
@@ -296,9 +297,21 @@ Tools:
 """
 
 
+def site_hints(request: str) -> str:
+    """Addresses of the sites a request names ("physics wallah" -> https://www.pw.live), so the plan opens the
+    site itself instead of searching Google for it (30 Sep)."""
+    from ..skills.browser import SITES
+    t = normalize(request)
+    hits = {name: url for name, url in SITES.items() if re.search(rf"\b{re.escape(name)}\b", t)}
+    return "; ".join(f"{name} = {url}" for name, url in hits.items())
+
+
 def planning_prompt(request: str, tools: dict, screen: str, recent: str, shortcuts: str, unsure: bool) -> tuple[str, str]:
     system = SYSTEM + catalog(tools)
     user = [f"Request: {request}"]
+    sites = site_hints(request)
+    if sites:
+        user.append(f"Sites named (open these addresses, then look_again for the pages inside): {sites}")
     if unsure:
         user.append("(Speech recognition was unsure of these words: if they don't clearly make sense, ask.)")
     if recent:

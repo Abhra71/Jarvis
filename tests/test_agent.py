@@ -346,6 +346,7 @@ class AgentTest(unittest.TestCase):
 
     def test_unusable_plan_gets_one_retry(self):
         desk = FakeDesktop()
+        desk.effects["volume"] = lambda a: "Muted."
         agent, think = _agent(desk, [{"steps": [{"do": "teleport"}]},
                                      {"steps": [{"do": "volume", "args": {"action": "mute"}}], "reply": "Muted."}],
                               self.tmp.name)
@@ -483,6 +484,27 @@ class LiveFindingsTest(unittest.TestCase):
         self.assertIsNone(checks.auto_check("youtube", {"command": "play lofi on youtube"}, None, snap))
         self.assertEqual(checks.auto_check("youtube", {"command": "pause"}, None, snap),
                          checks.Check("playing", "", True))
+
+
+class GroundedReplyTest(unittest.TestCase):
+    def test_the_plans_claim_needs_a_seen_result(self):
+        """30 Sep: a Google search, then "Opened the Physics Wallah chemistry batch page"."""
+        desk = FakeDesktop()
+        desk.effects["web_search"] = lambda a: "Searching google for pw chemistry."
+        plan = {"steps": [{"do": "web_search", "args": {"query": "pw chemistry"}}],
+                "reply": "Opened the Physics Wallah chemistry batch page."}
+        with tempfile.TemporaryDirectory() as tmp:
+            agent, _ = _agent(desk, [plan], tmp)
+            self.assertEqual(agent.run("open physics wallah, my batch, chemistry"), "Searching google for pw chemistry.")
+
+    def test_the_claim_is_said_when_the_result_was_seen(self):
+        desk = FakeDesktop()
+        desk.effects["open_website"] = lambda a: (desk.open("PW Chemistry - Google Chrome"), "Opened it.")[1]
+        plan = {"steps": [{"do": "open_website", "args": {"url": "https://pw.live"}, "expect": "window: Chemistry"}],
+                "reply": "Your chemistry page is open."}
+        with tempfile.TemporaryDirectory() as tmp:
+            agent, _ = _agent(desk, [plan], tmp)
+            self.assertEqual(agent.run("open pw chemistry"), "Your chemistry page is open.")
 
 
 class SecretsOnScreenTest(unittest.TestCase):

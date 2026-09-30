@@ -11,10 +11,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
-from ..skills import LAUNCHES, shortcuts
+from ..skills import LAUNCHES, request_parts, shortcuts
 from . import checks
 from .context import Memory, Readers, take
-from .plan import (LOOK_AGAIN, NeedsEyes, Plan, PlanError, PlanMemory, Step, code_plan, continue_prompt, parse,
+from .plan import (LOOK_AGAIN, NeedsEyes, Plan, PlanError, PlanMemory, Step, code_plan, continue_prompt, parse, site_hints,
                    planning_prompt, repair_prompt)
 
 log = logging.getLogger(__name__)
@@ -141,6 +141,10 @@ class Agent:
                 out.result, out.detail = "fallback", f"no usable plan ({e})"
                 return None
         out.source = plan.source
+        if plan.source in ("ai", "memory") and plan.steps and plan.steps[-1].tool in ("open_website", "open_app", "address_bar") \
+                and site_hints(text) and len(request_parts(text)) > 1:
+            # "Open PW, my batch, chemistry": the AI tends to stop at the front door (30 Sep); look and go on.
+            plan.steps.append(Step(LOOK_AGAIN, {}))
         if not plan.steps:
             out.result = "asked" if plan.ask else "done"
             return plan.ask or plan.reply
@@ -163,6 +167,7 @@ class Agent:
                  remember: bool = True, unsure: bool = False) -> str:
         steps, done, executed, results, narrated, looks, i = list(plan.steps), [], [], [], 0, 0, 0
         unconfirmed: list[str] = []  # what was done but couldn't be checked: never claimed as a success
+        last_seen = False            # the last step's result was SEEN on screen (a check that changed)
         reply = plan.reply
         while i < len(steps):
             step = steps[i]
@@ -171,8 +176,7 @@ class Agent:
                 looks += 1
                 if looks > MAX_LOOKS or not self.think:
                     return self._stuck(out, executed, "it's taking too many steps to find the way.")
-                self.sleep(SETTLE)
-                snap = self._snap()
+                snap = self._settled()
                 system, user = continue_prompt(request, self.tools, done, snap.text(),
                                                shortcuts.for_window(snap.front, request))
                 try:
@@ -212,6 +216,7 @@ class Agent:
                     why, confirmed = self._verify(step, check, already, before)
                     if why is None and not confirmed:
                         unconfirmed.append(result)
+                    last_seen = why is None and check is not None and not already
             log.info("Step %d: %s -> %s (%.2fs%s)", len(executed) + 1, step.label(), (result or why or "")[:80],
                      self.clock() - t_step, "" if why is None else ", FAILED")
             if why is None:
@@ -250,12 +255,33 @@ class Agent:
             said = " ".join(r if r.endswith((".", "!", "?")) else r + "." for r in unconfirmed[-2:])
             return f"{said} I couldn't confirm it worked on screen."
         out.result = "done"
-        if remember and not unsure and plan.source != "code" and (plan.source == "ai" or repaired):
+        if remember and not unsure and last_seen and plan.source != "code" and (plan.source == "ai" or repaired):
             self.memory.learn(request, executed, reply)
         # Code plans have no written reply: say what each step reported ("Playing Lofi Girl. Full screen.").
         # (Leaving out "Switched to Chrome." when it was only on the way to something else.)
         said = [r for s, r in zip(executed, results) if not (s.tool == "window" and s.args.get("action") == "focus")]
-        return reply or " ".join((said or results)[-3:]) or "Done."
+        facts = " ".join((said or results)[-3:]) or "Done."
+        if reply and not last_seen and plan.source != "code":
+            # The AI's summary is a claim about the goal; say it only when the last step was seen to work.
+            # 30 Sep: after a Google search it said "Opened the Physics Wallah chemistry batch page."
+            log.info("Not saying the plan's reply %r: the last step wasn't seen to work", reply)
+            return facts
+        return reply or facts
+
+    def _settled(self, max_wait: float = 6.0):
+        """The screen once the page has loaded and stopped changing: named items there, and the same ones twice
+        in a row. 30 Sep: a look right after opening PW saw only Chrome's toolbar and clicked "Tab search"."""
+        self.sleep(SETTLE)
+        deadline = self.clock() + max_wait
+        snap, last = self._snap(), None
+        while self.clock() < deadline:
+            names = [el.name for el in snap.items]
+            if names and names == last:
+                break
+            last = names
+            self.sleep(0.4)
+            snap = self._snap()
+        return snap
 
     def _blocked_by_dialog(self, step: Step, before) -> str | None:
         """Keys typed while a dialog box is open go to the dialog, not the page (29 Sep: F and Space were

@@ -31,6 +31,10 @@ Run the **whole PC by voice**: sit back and do ~99% of computer work reliably, f
 - **Phase 2:** restart Jarvis, then `tools/agent_suite.py --live N` while the user is away from the PC; score it, fix it, repeat.
 - **Permissions:** `.claude/settings.json` pre-approves edits, tests and git. Use only those command shapes; the user can't sit and approve prompts.
 
+## Live notes from the user (30 Sep)
+- **pw.live shows a "Student Feedback Form" pop-up on opening.** Jarvis must either close it or ask "Do you want to submit the feedback form, or shall I close it?". The user may say "close" (close it) or tell Jarvis what to fill in and submit. The batches page is `pw.live/study-v2/batches`; the batch cards have no accessible names, but OCR reads them.
+- The user works on the PC in between: live tests only while they say it's free; stop at once when they say pause.
+
 ## Next, in the user's order
 1. **Agent core**: design and task suite in `docs/agent-core.md`. Build it there.
 2. **Remaining abilities**: dictation, Bluetooth/Wi-Fi/brightness/night light, WhatsApp desktop + Gmail, file-upload dialogs, voice coding (VS Code C++, BlueJ), game on/off (eFootball).
