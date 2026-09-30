@@ -36,12 +36,20 @@ class CommandTest(unittest.TestCase):
         def has(hwnd, *prefixes):
             return any(b.lower().startswith(p.lower()) for p in prefixes for b in buttons)
 
+        screen = {"full": False}
+
+        def key(h, k, n=1):
+            keys.append((k, n))
+            if k == "f":
+                screen["full"] = not screen["full"]
+
         with mock.patch.object(youtube.win32gui, "GetForegroundWindow", return_value=1), \
+                mock.patch.object(youtube.elements, "is_fullscreen", side_effect=lambda: screen["full"]), \
                 mock.patch.object(youtube, "has_button", side_effect=has), \
                 mock.patch.object(youtube.win32gui, "GetWindowText", return_value=front), \
                 mock.patch.object(youtube.desktop, "_process_name", return_value="chrome.exe"), \
                 mock.patch.object(youtube, "press_button", side_effect=press), \
-                mock.patch.object(youtube, "_keys", side_effect=lambda h, k, n=1: keys.append((k, n))), \
+                mock.patch.object(youtube, "_keys", side_effect=key), \
                 mock.patch.object(youtube, "play", side_effect=lambda q, h, b: f"PLAY {q} {'here' if h else 'new'}"), \
                 mock.patch.object(youtube, "play_nth", side_effect=lambda h, n: f"NTH {n}"), \
                 mock.patch.object(youtube.desktop, "address_bar") as bar:
@@ -58,8 +66,29 @@ class CommandTest(unittest.TestCase):
         self.assertEqual(self._run("play")[:2], ("It's already playing.", []))
         self.assertEqual(self._run("skip the ad", buttons=("Skip Ad",))[:2], ("Skipped the ad.", ["Skip Ad"]))
         self.assertIn("don't see a skip button", self._run("skip ad", buttons=())[0])
-        self.assertEqual(self._run("full screen", buttons=("Full screen (f)",))[0], "Full screen.")
+        # Full screen by the F key (browsers ignore a button pressed through accessibility), and as a goal.
+        self.assertEqual(self._run("full screen", buttons=("Full screen (f)",))[::2], ("Full screen.", [("f", 1)]))
+        self.assertEqual(self._run("exit full screen")[0], "It's not in full screen.")
         self.assertEqual(self._run("next video", buttons=("Next",))[0], "Next video.")
+
+    def test_subtitles_are_a_goal_not_a_toggle(self):
+        class Btn:
+            def __init__(self, name, on):
+                self.CurrentName, self.on = name, on
+
+            @property
+            def CurrentAriaProperties(self):
+                return f"pressed={'true' if self.on else 'false'}"
+
+        btn = Btn("Subtitles/closed captions (c)", True)
+        with mock.patch.object(youtube, "_button", return_value=(None, btn)), \
+                mock.patch.object(youtube, "_invoke", side_effect=lambda u, e: setattr(e, "on", not e.on) or True):
+            self.assertEqual(youtube.subtitles(1, "turn on subtitles"), "Subtitles are already on.")
+            self.assertEqual(youtube.subtitles(1, "turn off subtitles"), "Subtitles off.")
+            self.assertEqual(youtube.subtitles(1, "subtitles"), "Subtitles on.")  # no on/off word: toggle
+        none = Btn("Subtitles/closed captions unavailable", False)
+        with mock.patch.object(youtube, "_button", return_value=(None, none)):
+            self.assertEqual(youtube.subtitles(1, "turn on subtitles"), "This video has no subtitles.")
 
     def test_no_button_falls_back_to_youtube_keys(self):
         reply, _, keys, _ = self._run("mute the video", buttons=())

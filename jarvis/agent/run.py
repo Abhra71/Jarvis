@@ -67,6 +67,10 @@ class Outcome:
                 f"{self.ai_calls} AI calls | {self.seconds:.1f}s{' | ' + self.detail if self.detail else ''}")
 
 
+def out_t0(out) -> float:
+    return getattr(out, "t0", 0.0)
+
+
 def _ask_for_yes(result: str) -> str:
     """'Needs confirmation: this would click 'Send'. …' -> 'Shall I click Send?'"""
     m = re.search(r"this would (.+?)\. Nothing was done", result)
@@ -109,7 +113,7 @@ class Agent:
     def run(self, text: str, unsure: bool = False) -> str | None:
         """The spoken reply, or None to let the old (seeing) loop handle this request."""
         out = Outcome(text)
-        t0 = self.clock()
+        t0 = out.t0 = self.clock()
         try:
             reply = self._run(text, unsure, out)
         finally:
@@ -121,6 +125,7 @@ class Agent:
     def _run(self, text: str, unsure: bool, out: Outcome) -> str | None:
         snap = self._snap()
         plan = code_plan(text, snap.front, unsure) or (None if unsure else self.memory.get(text, self.tools))
+        log.info("Plan from %s ready after %.2fs", plan.source if plan else "the AI (asking)", self.clock() - out_t0(out))
         if not plan:
             if not self.think:
                 out.result = "fallback"
@@ -185,6 +190,7 @@ class Agent:
             if step.say and len(steps) > 1 and narrated < 2:
                 narrated += 1
                 self.narrate(step.say)
+            t_step = self.clock()
             before = self._snap()
             why = self._blocked_by_dialog(step, before)
             # Decide the check and read what it needs NOW, before the step changes the screen.
@@ -206,6 +212,8 @@ class Agent:
                     why, confirmed = self._verify(step, check, already, before)
                     if why is None and not confirmed:
                         unconfirmed.append(result)
+            log.info("Step %d: %s -> %s (%.2fs%s)", len(executed) + 1, step.label(), (result or why or "")[:80],
+                     self.clock() - t_step, "" if why is None else ", FAILED")
             if why is None:
                 executed.append(step)
                 results.append(result)

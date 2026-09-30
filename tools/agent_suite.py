@@ -112,6 +112,13 @@ def main():
     p.add_argument("--live", action="store_true", help="really do the tasks on this PC")
     args = p.parse_args()
     logging.basicConfig(level=logging.WARNING)
+    if args.live:  # every step, check and timing, for the review (logs/agent_suite.log)
+        h = logging.FileHandler(ROOT / "logs" / "agent_suite.log", encoding="utf-8")
+        h.setFormatter(logging.Formatter("%(asctime)s.%(msecs)03d %(name)s: %(message)s", "%H:%M:%S"))
+        h.setLevel(logging.INFO)
+        logging.getLogger().addHandler(h)
+        logging.getLogger().setLevel(logging.INFO)
+        logging.getLogger().handlers[0].setLevel(logging.WARNING)
     numbers = args.tasks or list(range(1, len(TASKS) + 1))
     (live if args.live else plan_only)(numbers)
 

@@ -111,5 +111,5 @@ def press(keys: str, times: int = 1) -> str:
     presses = parse(keys)
     for _ in range(max(1, min(int(times or 1), 30))):
         for k in presses:
-            keyboard.send_keys(k, with_spaces=True)
+            keyboard.send_keys(k, with_spaces=True, vk_packet=False)
     return f"Pressed {keys}" + (f" {times} times." if times and times > 1 else ".")

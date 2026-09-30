@@ -164,12 +164,17 @@ def auto_check(tool: str, args: dict, check: Check | None, before: Snapshot) -> 
     key = str(args.get("key", "")).strip().lower() if tool == "press_key" else ""
     yt = _norm(args.get("command", "")) if tool == "youtube" else ""
     media = str(args.get("action", "")) if tool == "media" else ""
-    if key in _FULLSCREEN_KEYS or re.search(r"\bfull ?screen\b", yt):
-        leaving = before.fullscreen or re.search(r"\b(exit|leave|close)\b", yt)
-        return Check("fullscreen", "", bool(leaving))
-    if (key in _PLAY_KEYS or media == "play_pause" or re.fullmatch(r"(pause|play|resume)( .*)?", yt or "-")) \
-            and before.playing is not None:
-        return Check("playing", "", bool(before.playing))  # it flips: playing -> paused, paused -> playing
+    # The YouTube pack treats these as goals ("be in full screen", "be paused"): it does nothing if already so.
+    if re.search(r"\bfull ?screen\b", yt):
+        return Check("fullscreen", "", bool(re.search(r"\b(exit|leave|close)\b", yt)))
+    m = re.fullmatch(r"(pause|stop|play|resume|unpause|continue)( (it|this|the video|video|youtube))?", yt or "-")
+    if m:
+        return Check("playing", "", m.group(1) in ("pause", "stop"))
+    # A bare key or media button flips the state.
+    if key in _FULLSCREEN_KEYS:
+        return Check("fullscreen", "", before.fullscreen)
+    if (key in _PLAY_KEYS or media == "play_pause") and before.playing is not None:
+        return Check("playing", "", bool(before.playing))  # playing -> paused, paused -> playing
     if tool == "window" and args.get("action") in ("close", "close_all") and args.get("app"):
         return Check("closed", str(args["app"]))
     if tool == "youtube":

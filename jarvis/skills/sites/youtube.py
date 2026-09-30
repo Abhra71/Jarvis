@@ -111,18 +111,20 @@ def press_button(hwnd, *prefixes: str) -> str | None:
 
 
 def _keys(hwnd, keys: str, times: int = 1):
-    """YouTube's own shortcuts. They need the page, not the search box, to have the keyboard."""
+    """YouTube's own shortcuts. They need the page (ideally the player) to have the keyboard: after a search
+    the focus is often in the search box or on Chrome's own toolbar, and the key goes nowhere (30 Sep)."""
     UIA, uia, doc = _doc(hwnd)
     try:
         focused = uia.GetFocusedElement()
-        if focused.CurrentControlType in (UIA.UIA_EditControlTypeId, UIA.UIA_ComboBoxControlTypeId):
-            player = doc.FindFirst(UIA.TreeScope_Descendants, uia.CreatePropertyCondition(
-                UIA.UIA_NamePropertyId, "YouTube Video Player"))
+        player = doc.FindFirst(UIA.TreeScope_Descendants, uia.CreatePropertyCondition(
+            UIA.UIA_NamePropertyId, "YouTube Video Player"))
+        if focused.CurrentControlType in (UIA.UIA_EditControlTypeId, UIA.UIA_ComboBoxControlTypeId)                 or not uia.CompareElements(focused, player or doc):
             (player or doc).SetFocus()
+            time.sleep(0.05)
     except Exception:
         log.debug("Couldn't move the keyboard to the page", exc_info=True)
     for _ in range(max(1, min(times, 30))):
-        keyboard.send_keys(keys)
+        keyboard.send_keys(keys, vk_packet=False)
         time.sleep(0.05)
 
 
@@ -144,9 +146,10 @@ _CONTROLS = [  # (pattern, button prefixes to try, spoken reply, fallback key)
     (re.compile(r"^(next|next video|play the next (video|one)|skip (this )?video)$"), ("Next",), "Next video.", "+n"),
     (re.compile(r"^mute (the )?(video|youtube)$"), ("Mute",), "Muted the video.", "m"),
     (re.compile(r"^unmute (the )?(video|youtube)$"), ("Unmute",), "Unmuted the video.", "m"),
-    (re.compile(r"^(go )?full ?screen|^make it full ?screen|^maximi[sz]e the video"), ("Full screen",),
-     "Full screen.", "f"),
-    (re.compile(r"^(exit|leave|close) full ?screen"), ("Exit full screen",), "Left full screen.", "f"),
+    # Full screen by the F key only: browsers ignore a full-screen request that doesn't come from a real key or
+    # click, so pressing the button through UI Automation did nothing (30 Sep live test).
+    (re.compile(r"^(go )?full ?screen|^make it full ?screen|^maximi[sz]e the video"), (), "Full screen.", "f"),
+    (re.compile(r"^(exit|leave|close) full ?screen"), (), "Left full screen.", "f"),
     (re.compile(r"^theatre|^theater|^cinema mode"), ("Theater mode", "Theatre mode"), "Theatre mode.", "t"),
     (re.compile(r"\b(captions|subtitles)\b"), ("Subtitles/closed captions",), "Toggled subtitles.", "c"),
 ]
@@ -230,8 +233,58 @@ def handle(text: str, browser, unsure: bool = False) -> str | None:
     return None
 
 
+_OFF = re.compile(r"\b(off|disable|hide|remove|stop|exit|leave|close|no)\b")
+_ON = re.compile(r"\b(on|enable|show|turn on|start|want|with)\b")
+
+
+def _pressed(e) -> bool:
+    return "pressed=true" in (e.CurrentAriaProperties or "")
+
+
+def _wait(test, seconds: float) -> bool:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if test():
+            return True
+        time.sleep(0.15)
+    return test()
+
+
+def fullscreen(hwnd, want: bool = True) -> str:
+    """Full screen as a goal, not a toggle (30 Sep: a second F, meant as a retry, switched it back off).
+    Pressed with the F key: browsers ignore a full-screen request that isn't a real key press or click."""
+    if elements.is_fullscreen() == want:
+        return "It's already full screen." if want else "It's not in full screen."
+    for _ in range(2):  # right after a video opens, the player may not take the key yet
+        _keys(hwnd, "f")
+        if _wait(lambda: elements.is_fullscreen() == want, 1.5):
+            return "Full screen." if want else "Left full screen."
+    return "Not done: the video didn't go full screen." if want else "Not done: it's still in full screen."
+
+
+def subtitles(hwnd, t: str) -> str:
+    """'turn on subtitles' only turns them on (the button says whether they're on)."""
+    UIA, e = _button(hwnd, "Subtitles")
+    if e is None:
+        return "Not done: I can't find the subtitles button (is a video open?)."
+    if "unavailable" in (e.CurrentName or "").lower():
+        return "This video has no subtitles."
+    want = False if _OFF.search(t) else (True if _ON.search(t) else not _pressed(e))
+    if _pressed(e) == want:
+        return f"Subtitles are already {'on' if want else 'off'}."
+    if not _invoke(UIA, e):
+        _keys(hwnd, "c")
+    if _wait(lambda: _pressed(_button(hwnd, "Subtitles")[1]) == want, 1.5):
+        return f"Subtitles {'on' if want else 'off'}."
+    return "Not done: the subtitles didn't change."
+
+
 def _control(hwnd, t: str):
     """Player commands: the reply, None (recognised but let the AI deal with it), or False (not one)."""
+    if re.search(r"\b(captions|subtitles)\b", t):
+        return subtitles(hwnd, t)
+    if re.search(r"^(exit|leave|close) full ?screen|^(go )?full ?screen|^make it full ?screen|^maximi[sz]e the video", t):
+        return fullscreen(hwnd, not re.match(r"^(exit|leave|close)", t))
     for pattern, prefixes, reply, key in _CONTROLS:
         if pattern.search(t):
             # Already in that state? Say so instead of toggling it the wrong way.
@@ -279,8 +332,78 @@ def _wait_for_videos(hwnd, seconds: float = 8.0) -> list:
     return []
 
 
+_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 "
+       "Safari/537.36")
+_INITIAL_DATA = re.compile(r"var ytInitialData = (\{.*?\});</script>", re.S)
+
+
+def first_video(query: str) -> tuple[str, str] | None:
+    """(video id, title) of the first real video for a search, read in the background (~1.3 s) instead of
+    loading the results page in the browser and waiting for it (~5 s, 30 Sep live test). Same rule as on
+    the page: a normal video has a length; ads, Shorts, channels, playlists and live streams don't."""
+    import json
+
+    import httpx
+    try:
+        r = httpx.get("https://www.youtube.com/results", params={"search_query": query}, timeout=3.5,
+                      headers={"User-Agent": _UA, "Accept-Language": "en-US,en;q=0.9"}, follow_redirects=True)
+        m = _INITIAL_DATA.search(r.text)
+        data = json.loads(m.group(1)) if m else None
+    except Exception:
+        log.info("YouTube background search failed; using the page", exc_info=True)
+        return None
+    stack = [data]
+    while stack:  # depth-first, in page order
+        o = stack.pop()
+        if isinstance(o, dict):
+            v = o.get("videoRenderer")
+            if v and v.get("videoId") and v.get("lengthText"):
+                title = "".join(run.get("text", "") for run in v.get("title", {}).get("runs", []))
+                return v["videoId"], title.strip()
+            stack.extend(reversed(list(o.values())))
+        elif isinstance(o, list):
+            stack.extend(reversed(o))
+    return None
+
+
+def _wait_for_title(words: str, seconds: float = 6.0) -> bool:
+    """Did the video's page open (the tab's title shows it)?"""
+    want = normalize(words)[:25]
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if want and want in normalize(win32gui.GetWindowText(win32gui.GetForegroundWindow())):
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def _started(title: str) -> str:
+    """Only say "Playing" once Windows reports it playing (it also means the player is ready for keys)."""
+    from ...agent import ocr
+    try:
+        if _wait(lambda: ocr.playing() is True, 5.0):
+            return f"Playing {title}."
+    except Exception:
+        log.debug("Couldn't read the media status", exc_info=True)
+        return f"Opened {title}."
+    return f"Opened {title}, but it isn't playing yet."
+
+
 def play(query: str, hwnd: int | None, browser) -> str:
     """Search YouTube and play the first real video (not an ad, Short, channel or live stream)."""
+    found = first_video(query)
+    if found:
+        video_id, title = found
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        if hwnd:
+            desktop.address_bar(url)
+        else:
+            browser.open(url, None)
+        if _wait_for_title(title):
+            log.info("YouTube: opened %r for %r", title, query)
+            return _started(title)
+        log.info("YouTube: %r didn't open in time; trying the results page", title)
+        hwnd = win32gui.GetForegroundWindow() if is_front(win32gui.GetWindowText(win32gui.GetForegroundWindow()))             else hwnd
     url = RESULTS_URL.format(q=quote_plus(query))
     if hwnd:
         desktop.address_bar(url)

@@ -41,7 +41,7 @@ class ComboTest(unittest.TestCase):
             self.assertTrue(s.call("press_key", {"key": "shift+delete"}).startswith("Not allowed"))
             self.assertIn("Examples", s.call("press_key", {"key": "ctrl+banana"}))
             self.assertEqual(s.call("press_key", {"key": "ctrl+shift+n"}), "Pressed ctrl+shift+n.")
-        send.assert_called_once_with("^+n", with_spaces=True)
+        send.assert_called_once_with("^+n", with_spaces=True, vk_packet=False)  # real key presses (30 Sep)
 
 
 class OfflineShortcutTest(unittest.TestCase):

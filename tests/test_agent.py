@@ -456,6 +456,27 @@ class HonestyTest(unittest.TestCase):
         self.assertEqual(checks.parse({"playing": True}), checks.Check("playing"))
 
 
+class LiveFindingsTest(unittest.TestCase):
+    """30 Sep live runs."""
+
+    def test_multi_command_requests_skip_the_site_pack(self):
+        from jarvis.skills import sites
+        self.assertTrue(sites.several_commands("pause, go back 30 seconds, and turn on subtitles"))
+        self.assertFalse(sites.several_commands("play rock and roll songs on youtube"))
+        self.assertFalse(sites.several_commands("search tom and jerry"))
+        with mock.patch.object(sites.youtube, "handle") as pack:
+            self.assertIsNone(sites.handle("pause and mute", None))
+        pack.assert_not_called()
+
+    def test_play_with_a_query_is_not_a_play_pause_toggle(self):
+        desk = FakeDesktop()
+        desk.playing = True
+        snap = context.take(desk.readers())
+        self.assertIsNone(checks.auto_check("youtube", {"command": "play lofi on youtube"}, None, snap))
+        self.assertEqual(checks.auto_check("youtube", {"command": "pause"}, None, snap),
+                         checks.Check("playing", "", True))
+
+
 class OcrFindTest(unittest.TestCase):
     def test_find_words_inside_a_line(self):
         from jarvis.agent import ocr

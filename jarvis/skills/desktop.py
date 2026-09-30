@@ -201,7 +201,7 @@ def browser_action(action: str, times: int = 1) -> str:
     if not keys:
         return f"Unknown browser action {action}."
     for _ in range(times):
-        keyboard.send_keys(keys)
+        keyboard.send_keys(keys, vk_packet=False)
         time.sleep(STEP_PAUSE)
     return _BROWSER_DONE.get(action, "Done.")
 
