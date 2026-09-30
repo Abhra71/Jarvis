@@ -90,3 +90,34 @@ def ensure_jarvis_audible():
             log.info("PC was muted: muted the other apps instead so Jarvis can be heard")
     except Exception:
         log.debug("Couldn't check mute state", exc_info=True)
+
+
+DUCK_TO = 0.12  # other apps play at 12% of their level while Jarvis listens
+
+
+def duck() -> list:
+    """Turn every other app down while Jarvis listens, like a smart speaker does. 30 Sep: a song playing in
+    Brave was heard mixed with the user's voice, and most commands came out wrong. Returns what restore() needs."""
+    me = os.getpid()
+    saved = []
+    try:
+        for session in AudioUtilities.GetAllSessions():
+            proc = session.Process
+            if not proc or proc.pid == me:
+                continue
+            vol = session.SimpleAudioVolume
+            level = vol.GetMasterVolume()
+            if level > DUCK_TO:
+                vol.SetMasterVolume(level * DUCK_TO, None)
+                saved.append((vol, level))
+    except Exception:
+        log.debug("Couldn't turn other apps down", exc_info=True)
+    return saved
+
+
+def restore(saved: list):
+    for vol, level in saved:
+        try:
+            vol.SetMasterVolume(level, None)
+        except Exception:
+            log.debug("Couldn't turn an app back up", exc_info=True)

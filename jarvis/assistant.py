@@ -10,6 +10,7 @@ from typing import Callable
 
 from . import nlu
 from .audio import Mic, record_utterance
+from .skills import volume
 from .brain import Brain, BrainUnavailable
 from . import abilities
 from .skills import Skills, desktop, keys, site_url, sites
@@ -265,7 +266,11 @@ class Assistant:
         first = True
 
         while not self.stopping.is_set():
-            audio = record_utterance(self.mic, listen if first else followup)
+            saved = volume.duck() if listen.get("duck", True) else []  # music down while you speak
+            try:
+                audio = record_utterance(self.mic, listen if first else followup)
+            finally:
+                volume.restore(saved)
             if audio is None:
                 return  # silence: the caller plays the "back to sleep" chime
 
