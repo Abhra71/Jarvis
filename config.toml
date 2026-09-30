@@ -52,6 +52,10 @@ compute_type = "int8"
 # Measured 30 Sep (tools/stt_eval.py, 112 clips incl. the user's misheard sentences and music): small.en GPU 5.9% clean,
 # 8.9% with ducked music, 0.26 s, 357 MB, loads in ~3.5 s; large-v3-turbo 8.3% / 11.9%, 0.69 s, 1 GB, loads in ~7 s
 # (better only with loud music, which Jarvis now ducks); base.en CPU 9.8%, 0.68 s. Remove gpu_model to use the CPU only.
+# Hearing in the cloud first (30 Sep): Groq's Whisper large-v3, free (2,000 a day), 0.34 s, the GPU never on.
+# If it's down or slow, the CPU model takes that sentence and the GPU one is used for the next minute.
+cloud_model = "whisper-large-v3"
+cloud_timeout = 3.0
 gpu_model = "small.en"
 gpu_idle_seconds = 0         # 0 = one sentence: the GPU loads as you start speaking and exits right after (user, 30 Sep)
 gpu_load_wait = 4.0          # a finished sentence waits this long for the GPU model (loads in ~3.5 s) before the CPU takes it

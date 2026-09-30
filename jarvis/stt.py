@@ -125,6 +125,56 @@ class GpuHearing:
             self.proc.kill()
 
 
+class CloudHearing:
+    """Groq's hosted Whisper large-v3: the user's laptop never switches its GPU on for hearing (30 Sep).
+
+    Measured on the 112-clip test: 6.1% word errors in a quiet room, 7.4% with ducked music, 0.34 s, no model
+    to load. Free tier: 2,000 requests a day, 20 a minute. When it's down, rate-limited or slow, the local
+    models take the sentence and the cloud is left alone for a minute."""
+
+    URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+
+    def __init__(self, model: str, key: str, timeout: float):
+        import httpx
+        self.model, self.key, self.timeout = model, key, timeout
+        self.http = httpx.Client(timeout=timeout)
+        self.resting_until = 0.0
+
+    def usable(self) -> bool:
+        import time
+        return time.monotonic() >= self.resting_until
+
+    def transcribe(self, audio: np.ndarray, prompt: str) -> dict | None:
+        import io
+        import time
+        import wave
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes((np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes())
+        t0 = time.monotonic()
+        try:
+            r = self.http.post(self.URL, headers={"Authorization": f"Bearer {self.key}"},
+                               files={"file": ("speech.wav", buf.getvalue(), "audio/wav")},
+                               data={"model": self.model, "language": "en", "prompt": prompt[:800],
+                                     "response_format": "verbose_json", "temperature": "0"})
+            r.raise_for_status()
+            data = r.json()
+        except Exception as e:
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            log.warning("Cloud hearing failed (%s); the local model takes this sentence",
+                        f"HTTP {status}" if status else type(e).__name__)
+            self.resting_until = time.monotonic() + 60
+            return None
+        segments = data.get("segments") or []
+        log.info("Cloud hearing in %.2fs", time.monotonic() - t0)
+        return {"text": (data.get("text") or "").strip(), "segments": len(segments),
+                "confidence": min((s.get("avg_logprob", 0.0) for s in segments), default=0.0),
+                "no_speech": max((s.get("no_speech_prob", 1.0) for s in segments), default=1.0)}
+
+
 class Transcriber:
     def __init__(self, cfg: dict, vocabulary: list[str] | None = None):
         # Names of the user's installed apps, so e.g. "Claude" isn't heard as "Cloud".
@@ -143,10 +193,19 @@ class Transcriber:
         self.gpu = GpuHearing(gpu_model, cfg.get("gpu_idle_seconds", 120)) if gpu_model else None
         if self.gpu:
             self.gpu.load_wait = cfg.get("gpu_load_wait", 0.5)
-        log.info("Whisper ready%s", f" (GPU {gpu_model} on demand)" if self.gpu else "")
+        self.cloud = None
+        if cfg.get("cloud_model"):
+            from .brain import load_api_key
+            key = load_api_key("GROQ_API_KEY")
+            if key:
+                self.cloud = CloudHearing(cfg["cloud_model"], key, cfg.get("cloud_timeout", 3.0))
+        log.info("Whisper ready%s%s", f" (cloud {cfg.get('cloud_model')} first)" if self.cloud else "",
+                 f" (GPU {gpu_model} on demand)" if self.gpu else "")
 
     def prepare(self):
-        """About to listen: get the GPU model loading while the user speaks."""
+        """About to listen: get the GPU model loading while the user speaks (only when the cloud isn't used)."""
+        if self.cloud and self.cloud.usable():
+            return  # the GPU stays off
         if self.gpu:
             self.gpu.start()
 
@@ -156,7 +215,11 @@ class Transcriber:
 
     def transcribe(self, audio: np.ndarray) -> str:
         self.unsure = False
-        result = self.gpu.transcribe(audio, self.hint) if self.gpu else None
+        result = None
+        if self.cloud and self.cloud.usable():
+            result = self.cloud.transcribe(audio, self.hint)  # None: the CPU model takes it (no loading wait)
+        elif self.gpu:
+            result = self.gpu.transcribe(audio, self.hint)
         if result is None:
             segments, _ = self.model.transcribe(
                 audio,

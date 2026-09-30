@@ -87,6 +87,30 @@ def _gpu_mb() -> int:
         return -1
 
 
+class GroqWhisper:
+    """Groq's hosted Whisper (free tier: 2,000 requests/day, 20/min), same interface as WhisperModel.transcribe."""
+
+    def __init__(self, model: str):
+        import httpx
+        from jarvis.brain import load_api_key
+        self.model, self.key, self.http = model, load_api_key("GROQ_API_KEY"), httpx.Client(timeout=15)
+
+    def transcribe(self, audio, language="en", initial_prompt=None, **_):
+        import wave
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1), w.setsampwidth(2), w.setframerate(16000)
+            w.writeframes((np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes())
+        r = self.http.post("https://api.groq.com/openai/v1/audio/transcriptions",
+                           headers={"Authorization": f"Bearer {self.key}"},
+                           files={"file": ("a.wav", buf.getvalue(), "audio/wav")},
+                           data={"model": self.model, "language": language, "prompt": initial_prompt or "",
+                                 "response_format": "json", "temperature": "0"})
+        r.raise_for_status()
+        seg = type("S", (), {"text": r.json()["text"]})
+        return [seg], None
+
+
 def main():
     from faster_whisper import WhisperModel
     load_cuda_libs()
@@ -98,16 +122,25 @@ def main():
     wanted = sys.argv[1:] or ["base.en", "small.en", "large-v3-turbo"]
     setups = [s for s in [("base.en cpu (fallback)", "base.en", "cpu", "int8"),
                           ("small.en gpu (now)", "small.en", "cuda", "int8_float16"),
-                          ("large-v3-turbo gpu", "large-v3-turbo", "cuda", "int8_float16")] if s[1] in wanted]
+                          ("large-v3-turbo gpu", "large-v3-turbo", "cuda", "int8_float16"),
+                          ("groq whisper-large-v3 (cloud)", "whisper-large-v3", "groq", ""),
+                          ("groq whisper-large-v3-turbo (cloud)", "whisper-large-v3-turbo", "groq", "")]
+              if s[1] in wanted]
     for label, name, device, ctype in setups:
         before = _gpu_mb()
         t_load = time.perf_counter()
-        model = WhisperModel(name, device=device, compute_type=ctype, download_root=str(ROOT / "models" / "whisper"))
+        if device == "groq":
+            model = GroqWhisper(name)
+        else:
+            model = WhisperModel(name, device=device, compute_type=ctype,
+                                 download_root=str(ROOT / "models" / "whisper"))
         load = time.perf_counter() - t_load
         model.transcribe(clips[0][2], language="en")  # warm up
         vram = _gpu_mb() - before if device == "cuda" else 0
         errors, times, wrong = [], [], []
         for text, voice, audio in clips:
+            if device == "groq":
+                time.sleep(3.1)  # the free tier allows 20 requests a minute
             t0 = time.perf_counter()
             segs, _ = model.transcribe(audio, language="en", beam_size=3, initial_prompt=HINT, vad_filter=False)
             heard = " ".join(s.text for s in segs).strip()

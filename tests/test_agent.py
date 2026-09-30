@@ -800,3 +800,27 @@ class CloudReview30SepTest(unittest.TestCase):
                 mock.patch.object(desktop.keyboard, "send_keys") as keys, mock.patch.object(desktop.time, "sleep"):
             self.assertTrue(desktop._paste("a long piece of text to paste"))
         keys.assert_called_once_with("^v")
+
+
+class CloudHearingTest(unittest.TestCase):
+    """30 Sep: Groq's Whisper hears first (no GPU); when it fails, the local model takes the sentence."""
+
+    def test_falls_back_and_rests_when_the_cloud_fails(self):
+        import httpx
+        import numpy as np
+        from jarvis.stt import CloudHearing
+        c = CloudHearing("whisper-large-v3", "k", 3.0)
+        with mock.patch.object(c.http, "post", side_effect=httpx.ConnectError("offline")):
+            self.assertIsNone(c.transcribe(np.zeros(16000, dtype=np.float32), "hint"))
+        self.assertFalse(c.usable())  # left alone for a minute: the GPU/CPU models hear meanwhile
+
+    def test_reads_groqs_answer(self):
+        import numpy as np
+        from jarvis.stt import CloudHearing
+        c = CloudHearing("whisper-large-v3", "k", 3.0)
+        reply = mock.Mock(status_code=200)
+        reply.json.return_value = {"text": " Open Khazana chemistry.",
+                                   "segments": [{"avg_logprob": -0.1, "no_speech_prob": 0.01}]}
+        with mock.patch.object(c.http, "post", return_value=reply):
+            r = c.transcribe(np.zeros(16000, dtype=np.float32), "hint")
+        self.assertEqual((r["text"], r["segments"], r["confidence"]), ("Open Khazana chemistry.", 1, -0.1))
