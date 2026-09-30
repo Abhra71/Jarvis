@@ -15,7 +15,7 @@ def _get_browser():
     return _browser
 
 
-@ability("gmail_draft", "write a Gmail email (not sent)", value="to, subject, body as said", safe=False)
+@ability("gmail_draft", "write a Gmail email (not sent)", value="the request", safe=False)
 def gmail_draft(said: str):
     parsed = gmail.parse(said)
     if not parsed:

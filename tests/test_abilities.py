@@ -181,3 +181,28 @@ class SystemSwitchesTest(unittest.TestCase):
         self.assertEqual(_pick(devs, "headphones")[0], "Rockerz 480")  # the only one, called generically
         self.assertEqual(_pick(devs, "rockers")[0], "Rockerz 480")
         self.assertIsNone(_pick(devs, "jbl speaker"))
+
+
+class UploadTest(unittest.TestCase):
+    """30 Sep: 'upload my newest pdf' / 'upload the file called marksheet' pick the file in code, never a guess."""
+
+    def test_phrases(self):
+        self.assertEqual(abilities.match("upload my newest pdf")[0].name, "upload_file")
+        self.assertEqual(abilities.match("attach the file called marksheet")[1], "marksheet")
+        for said in ("select all", "choose file", "pick a color"):
+            m = abilities.match(said)
+            self.assertFalse(m and m[0].name == "upload_file", said)
+
+    def test_finds_by_name_and_newest_never_guesses_or_picks_secrets(self):
+        import tempfile
+        from pathlib import Path
+        from jarvis.abilities import upload
+        with tempfile.TemporaryDirectory() as d:
+            folder = Path(d)
+            (folder / "Class_10_Marksheet.pdf").write_text("x")
+            (folder / "notes.txt").write_text("x")
+            (folder / ".env").write_text("KEY=1")
+            with mock.patch.object(upload.files, "resolve", side_effect=lambda f: folder):
+                self.assertEqual(upload.find_file("marksheet", ("X",))[0].name, "Class_10_Marksheet.pdf")
+                self.assertIsNone(upload.find_file("resume", ("X",))[0])
+                self.assertIsNone(upload.find_file("env", ("X",))[0])

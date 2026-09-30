@@ -27,7 +27,7 @@ TASKS = [
     "Email abhrachakraborty21 at gmail dot com saying Jarvis email test",  # WhatsApp dropped by the user (30 Sep)
     "Connect my Rockerz headphones",
     "Open my Downloads and find the newest PDF",
-    "Upload my resume here",
+    "Upload my newest pdf here",  # no resume file on this PC (30 Sep)
     "Open VS Code, go to line 40 and comment it",
     "Snap Chrome left and VS Code right",
     "Close all YouTube tabs",
