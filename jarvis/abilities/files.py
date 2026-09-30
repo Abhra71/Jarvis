@@ -23,6 +23,19 @@ _FOLDERS = ("downloads", "documents", "desktop", "pictures", "music", "videos")
 _KIND_WORDS = "|".join(sorted(KINDS, key=len, reverse=True))
 
 
+def _screenshots() -> str:
+    """Where screenshots are: Pictures may be in OneDrive, and the folder may be "Screenshots 1" (both on this
+    PC, 1 Oct). The newest folder called Screenshots…, else Pictures."""
+    try:
+        pics = files.resolve("pictures")
+        dirs = [d for d in pics.iterdir() if d.is_dir() and d.name.lower().startswith("screenshot")]
+    except Exception:
+        return "pictures"
+    if not dirs:
+        return "pictures"
+    return "pictures/" + max(dirs, key=lambda d: d.stat().st_mtime).name
+
+
 def _parse(said: str) -> tuple[str, tuple[str, ...], str]:
     """'open my downloads and find the newest pdf' -> ('Downloads', ('.pdf',), 'PDF')."""
     folder = next((f for f in _FOLDERS if f in said), "")
@@ -32,9 +45,9 @@ def _parse(said: str) -> tuple[str, tuple[str, ...], str]:
     if not folder:
         folder = "pictures" if word in ("screenshot",) else "downloads"
     if word == "screenshot":
-        folder = "pictures/screenshots" if (files.HOME / "Pictures" / "Screenshots").is_dir() else folder
+        folder = _screenshots()
     label = {"pdf": "PDF", "file": "file", "download": "download"}.get(word, word)
-    return folder.title(), KINDS.get(word, ()), label
+    return folder if "/" in folder else folder.title(), KINDS.get(word, ()), label
 
 
 def newest(folder: str, exts: tuple[str, ...]):
@@ -83,15 +96,16 @@ def find_newest(said: str, open_it: bool = False) -> str:
         f = newest(folder, exts)
     except (OSError, PermissionError, ValueError) as e:
         return f"Not done: I can't read {folder} ({e})."
+    said_folder = folder.rsplit("/", 1)[-1]  # "Screenshots 1", not "pictures/Screenshots 1"
     if not f:
-        return f"There's no {label} in {folder}."
+        return f"There's no {label} in {said_folder}."
     if re.match(r"^open\b", said) and not re.match(rf"^open (?:my |the )?(?:{'|'.join(_FOLDERS)})", said):
         return files.open_path(str(f))  # "open my latest pdf": open the file itself
     files.show_in_explorer(str(f))
     shown = _wait_for_explorer(f.parent.name)
     when = _ago(time.time() - f.stat().st_mtime)
     where = "selected in File Explorer" if shown else "in File Explorer"
-    return f"The newest {label} in {folder} is {f.stem}, from {when}. It's {where}."
+    return f"The newest {label} in {said_folder} is {f.stem}, from {when}. It's {where}."
 
 
 def _wait_for_explorer(folder_name: str, seconds: float = 3.0) -> bool:
@@ -196,3 +210,16 @@ def open_file_here(said: str):
         return f"Not done: {f.name} is a program or script; I don't run those from a file name. Say 'open app' for apps."
     os.startfile(str(f))
     return f"Opened {f.name}."
+
+
+@ability("open_folder", "open one of the user's folders (Downloads, Documents, Desktop, Pictures, Music, Videos)",
+         r"(?:open|go to|take me to) (?:my |the )?(?P<value>downloads?|documents?|desktop|pictures?|photos|music|"
+         r"videos|screenshots)(?: folder)?",
+         # "show me my desktop" means minimise everything: showing needs the word folder
+         r"show(?: me)? (?:my |the )?(?P<value>downloads?|documents?|desktop|pictures?|photos|music|videos|"
+         r"screenshots) folder")
+def open_folder(value: str):
+    """1 Oct speed report: 'Open downloads.' went to the AI (2 calls, 6 s). A folder the user names is instant."""
+    name = {"download": "downloads", "document": "documents", "picture": "pictures", "photos": "pictures",
+            "screenshots": _screenshots()}.get(value, value)
+    return files.open_path(name)
