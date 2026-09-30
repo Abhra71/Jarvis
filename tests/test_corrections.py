@@ -68,5 +68,19 @@ class AssistantTest(unittest.TestCase):
         self.assertEqual(a.corrections.pairs, {})
 
 
+
+class DidYouMeanTest(unittest.TestCase):
+    def test_yes_to_did_you_mean_is_learned(self):
+        from jarvis import assistant
+        a = assistant.Assistant.__new__(assistant.Assistant)
+        a.corrections = corrections.Corrections(None)
+        a.last_reply = "I couldn't find Clawed. Did you mean Claude?"
+        a.brain = mock.Mock(agent=None)
+        with mock.patch.object(a, "_handle", return_value=("agent", "Opening Claude.")), \
+                mock.patch("jarvis.assistant.usage"), mock.patch("jarvis.assistant.tasklog.write"):
+            a.handle_text("Yes.")
+        self.assertEqual(a.corrections.pairs, {"clawed": "Claude"})
+
+
 if __name__ == "__main__":
     unittest.main()

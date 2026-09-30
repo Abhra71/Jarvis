@@ -71,6 +71,7 @@ _NOT_CODE = re.compile(r"(open|close|play|pause|resume|volume|mute|unmute|search
                        r"create a (new )?class|make a (new )?class|new class)\b")
 
 _PLAY = re.compile(r"\b(play|listen to|put on|watch|resume)\b", re.I)
+_YES_WORD = re.compile(r"\s*(yes|yeah|yep|yup|sure|ok|okay|right|correct|exactly|haan|ha)\b", re.I)
 _STOP = re.compile(r"(stop|cancel|never ?mind|forget it|leave it|that'?s all|nothing|no|nope|nah|no thanks|"
                    r"don'?t|do not)( it| that| send it| do it)?"
                    r"(,? (stop|cancel|nothing))*( please)?( jarvis)?")
@@ -189,8 +190,13 @@ class Assistant:
         usage.end_turn(route, reply)
         log.info("Handled by %s", route)
         last_after = getattr(agent, "last", None)
+        asked = re.match(r"I couldn't find (.+?)\. Did you mean (.+?)\?$", getattr(self, "last_reply", "") or "")
+        if asked and corr and _YES_WORD.match(text) and route == "agent" \
+                and tasklog.classify(route, reply) not in ("failed", "stuck"):
+            corr.learn(asked.group(1), asked.group(2))  # "Did you mean Claude?" "Yes." -> Clawed is Claude from now on
         if route not in ("dictation",):
             self.last_request = getattr(self, "fixed_request", None) or text
+            self.last_reply = reply
         self.fixed_request = None
         try:
             turn.finish(route, reply, last_after if last_after is not last_before else None)

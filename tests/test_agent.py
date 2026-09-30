@@ -684,9 +684,6 @@ class BrainWiringTest(unittest.TestCase):
         self.assertEqual(b.answered_by, "agent")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class PwRouteTest(unittest.TestCase):
     """30 Sep: PW mapped live; its routes are code plans (no AI)."""
@@ -1024,3 +1021,7 @@ class PatternTest(unittest.TestCase):
     def test_cut_off_requests_are_not_remembered(self):
         self.mem.learn("maximize the", [planmod.Step("window", {"app": "chrome", "action": "maximize"})], "")
         self.assertEqual(self.mem.plans, {})
+
+
+if __name__ == "__main__":
+    unittest.main()
