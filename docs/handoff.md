@@ -59,6 +59,13 @@ Run the **whole PC by voice**: sit back and do ~99% of computer work reliably, f
   - PW cards have no accessible names: clicked by OCR, after the text stops moving (`_find_steady`). OCR clicks never use the browser's own tab strip (`elements.page_top`).
 - The user works on the PC in between: live tests only while they say it's free; stop at once when they say pause.
 
+## Open items (30 Sep, late, from the user's disappointing BlueJ session)
+- Fixed and committed: maximize crash, mouse-takeover crash, coding mode too eager (now strict).
+- NOT yet done: BlueJ "create a new class called X" ability (click New Class..., fill the name box, OK, check the
+  class appears); the agent's dialog guard still blocks typing into a dialog's own field (allow when focus is a
+  field). The user's BlueJ class "test" got junk code from the old coding mode: offer to clean it (undo / clear).
+- Live-test the stricter coding mode with the session's phrases before calling coding mode done.
+
 ## Next, in the user's order
 1. Phase 3 leftovers: see the 10x results in `logs/reliability.jsonl`; fix what failed.
 2. **Better logging** (Phase 4), then the user's 2–3 day trial (build Phase 5 on a branch meanwhile: a cloud-session
