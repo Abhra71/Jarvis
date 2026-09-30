@@ -14,7 +14,7 @@ Run the **whole PC by voice**: sit back and do ~99% of computer work reliably, f
   - agent behaviour ~35% (the core is built but not yet proven live);
   - **the dream overall ~44%**.
 - **The core gap:** Jarvis is a one-shot command runner, not an agent. It has no plan, no step checks, no recovery and no context.
-- 143 tests pass: `.venv\Scripts\python -m unittest discover tests`. Everything is committed and pushed to `main`.
+- 162 tests pass: `.venv\Scripts\python -m unittest discover tests`. Everything is committed and pushed to `main`.
 
 ## Agent core (Phase 1): built, 30 Sep; Phase 2 (live runs on the real PC) is next
 - **In `jarvis/agent/`:**
@@ -33,6 +33,11 @@ Run the **whole PC by voice**: sit back and do ~99% of computer work reliably, f
 
 ## Live notes from the user (30 Sep)
 - **pw.live shows a "Student Feedback Form" pop-up on opening.** Jarvis must either close it or ask "Do you want to submit the feedback form, or shall I close it?". The user may say "close" (close it) or tell Jarvis what to fill in and submit. The batches page is `pw.live/study-v2/batches`; the batch cards have no accessible names, but OCR reads them.
+- **PW mapped live (30 Sep), all in code, no AI** (`jarvis/skills/sites/pw.py`, abilities `pw_batch`, `pw_subject`, `pw_khazana`; code plans in `plan._pw_plan`):
+  - batch = VICTORY 2027 (Class 10th ICSE) on `pw.live/study-v2/study` → All Classes → subject (two Chemistries: Sunil Sir 24 % and Sanya; the most-studied one opens, the reply names the other). 2.8–6.5 s.
+  - Khazana = the batch's old recorded classes; the user studies Chemistry there from Sunil Sir ("Chemistry 2026"). "Khazana chemistry [year]" opens the Continue Learning course; a year that's said is matched exactly, else Khazana's search (`…/khazana-search?query=`). Its address is remembered in `data/pw.json`: 3 s.
+  - Pop-ups (`jarvis/skills/popups.py`): forms (Student Feedback Form) → the agent asks "close it, or fill it in?" (answer routed first in `assistant._handle` via `brain.answer_agent`; "always close it" kept in `data/popups.json`); notices (Milestone Achieved streak) are closed on their own. Close button found through the page structure (PW's X is unnamed).
+  - PW cards have no accessible names: clicked by OCR, after the text stops moving (`_find_steady`). OCR clicks never use the browser's own tab strip (`elements.page_top`).
 - The user works on the PC in between: live tests only while they say it's free; stop at once when they say pause.
 
 ## Next, in the user's order

@@ -345,7 +345,8 @@ class Skills:
         from ..agent import ocr
         try:
             self._guard_secrets()
-            hit = ocr.find(name, ocr.read_front_lines())
+            top = elements.page_top()  # never the browser's own tabs or bookmarks
+            hit = ocr.find(name, [ln for ln in ocr.read_front_lines() if ln.rect[1] >= top])
         except Exception:
             log.debug("OCR fallback failed", exc_info=True)
             return None

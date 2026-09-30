@@ -5,13 +5,15 @@ plan, VMware and secrets files are off-limits, and send/buy/delete need a spoken
 that yes, the plan pauses there, Jarvis asks, and a "yes" resumes it from that step.
 """
 
+import json
 import logging
 import re
 import time
 from dataclasses import dataclass, field
 from typing import Callable
 
-from ..skills import LAUNCHES, request_parts, shortcuts
+from ..config import ROOT
+from ..skills import LAUNCHES, popups, request_parts, shortcuts
 from . import checks
 from .context import Memory, Readers, take
 from .plan import (LOOK_AGAIN, NeedsEyes, Plan, PlanError, PlanMemory, Step, code_plan, continue_prompt, parse, site_hints,
@@ -36,6 +38,18 @@ _UNCHECKABLE = {"press_key", "type_text", "click_element", "media", "browser", "
 _KEYS_TO_PAGE = {"press_key", "type_text", "youtube", "media", "browser", "find_on_page"}
 _ARG_OBJECTS = ("name", "app", "path", "url", "query", "source")  # what "it" means after a step
 
+# A site's pop-up form over the page (30 Sep, PW's "Student Feedback Form"): the user decides. Asked before a
+# step that works on the page, or when looking again; "always close it" is remembered.
+POPUP_FILE = ROOT / "data" / "popups.json"
+_PAGE_STEPS = {"click_element", "press_key", "type_text", "find_on_page"}
+_PAGE_ABILITIES = {"pw_subject", "pw_khazana"}
+_ABOUT_POPUPS = re.compile(r"\b(pop ?ups?|feedback|survey|form)\b", re.I)
+_FILL_IT = re.compile(r"\b(fill|submit|answer|rate it|i'?ll do|let me|leave it|keep it|don'?t close|do not close)\b",
+                      re.I)
+_CLOSE_IT = re.compile(r"\b(close|dismiss|skip|cancel|remove|hide|get rid|yes|yeah|sure|ok|okay|go ahead)\b", re.I)
+_ALWAYS = re.compile(r"\b(always|every ?time|from now on|never ask)\b", re.I)
+LEFT_OPEN_MINUTES = 10
+
 
 def looks_failed(result: str) -> bool:
     r = str(result).strip().lower()
@@ -48,6 +62,16 @@ class Pending:
     request: str
     steps: list[Step]
     reply: str
+    when: float = field(default_factory=time.monotonic)
+
+
+@dataclass
+class Question:
+    """A plan paused because a pop-up form is over the page: "close it, or fill it in?"."""
+    request: str
+    steps: list[Step]
+    reply: str
+    popup: str
     when: float = field(default_factory=time.monotonic)
 
 
@@ -86,7 +110,8 @@ def _ask_for_yes(result: str) -> str:
 class Agent:
     def __init__(self, skills, think: Callable[[str, str], str] | None, narrate: Callable[[str], None] = None,
                  readers: Readers | None = None, memory: PlanMemory | None = None,
-                 sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic):
+                 sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic,
+                 popup_file=POPUP_FILE):
         self.skills = skills
         self.think = think              # think(system, user) -> the AI's text (JSON); raises if no AI
         self.narrate = narrate or (lambda text: None)
@@ -95,7 +120,11 @@ class Agent:
         self.sleep, self.clock = sleep, clock
         self.context = Memory()
         self.pending: Pending | None = None
+        self.question: Question | None = None
         self.last: Outcome | None = None
+        self.popup_file = popup_file                 # None: don't keep "always close it" on disk (tests)
+        self.popup_prefs = self._load_popup_prefs()  # pop-up title -> "close"
+        self.popups_left_open: dict[str, float] = {}  # the user is filling it in: don't ask again for a while
 
     @property
     def tools(self) -> dict:
@@ -130,6 +159,12 @@ class Agent:
             if not self.think:
                 out.result = "fallback"
                 return None
+            popup = self._popup_in_way(text, snap)
+            if popup:  # the user's call, not the planner's (it asked on its own, and "close it" then went nowhere)
+                asked = self._popup(text, [], "", popup, out, [])
+                if asked:
+                    return asked
+                snap = self._snap()  # closed (the user always wants that): plan from the page under it
             system, user = planning_prompt(text, self.tools, snap.text(), self.context.text(),
                                            shortcuts.for_window(snap.front, text), unsure)
             try:
@@ -177,6 +212,13 @@ class Agent:
                 if looks > MAX_LOOKS or not self.think:
                     return self._stuck(out, executed, "it's taking too many steps to find the way.")
                 snap = self._settled()
+                popup = self._popup_in_way(request, snap)
+                if popup:
+                    asked = self._popup(request, steps[i:], reply, popup, out, executed)
+                    if asked:
+                        return asked
+                    looks -= 1
+                    continue
                 system, user = continue_prompt(request, self.tools, done, snap.text(),
                                                shortcuts.for_window(snap.front, request))
                 try:
@@ -196,6 +238,13 @@ class Agent:
                 self.narrate(step.say)
             t_step = self.clock()
             before = self._snap()
+            on_page = step.tool in _PAGE_STEPS or step.args.get("ability") in _PAGE_ABILITIES
+            popup = self._popup_in_way(request, before) if on_page else ""
+            if popup:
+                asked = self._popup(request, steps[i:], reply, popup, out, executed)
+                if asked:
+                    return asked
+                before = self._snap()
             why = self._blocked_by_dialog(step, before)
             # Decide the check and read what it needs NOW, before the step changes the screen.
             check = checks.auto_check(step.tool, step.args, step.check, before)
@@ -282,6 +331,81 @@ class Agent:
             self.sleep(0.4)
             snap = self._snap()
         return snap
+
+    # ---- a site's pop-up form ---------------------------------------------------------
+
+    def _popup_in_way(self, request: str, snap) -> str:
+        title = snap.popup
+        if not title or _ABOUT_POPUPS.search(request):
+            return ""  # none, or the request is about the pop-up itself
+        if self.clock() - self.popups_left_open.get(title, -1e9) < LEFT_OPEN_MINUTES * 60:
+            return ""  # the user said they'd fill it in
+        return title
+
+    def _popup(self, request: str, steps: list[Step], reply: str, title: str, out: Outcome,
+               executed: list) -> str | None:
+        """None when it was closed (the user always wants that); otherwise the question for the user."""
+        if self.popup_prefs.get(title) == "close" or popups.is_notice(title):
+            result = self._close_popup()
+            if looks_failed(result):
+                return self._stuck(out, executed, result)
+            log.info("Closed the pop-up %r (a notice, or the user always wants it closed)", title)
+            return None
+        self.question = Question(request, steps, reply, title, self.clock())
+        out.steps, out.result, out.detail = len(executed), "asked", f"pop-up: {title}"
+        return f"There's a pop-up over the page: the {title}. Shall I close it, or do you want to fill it in?"
+
+    def _close_popup(self) -> str:
+        result = self.skills.call("do", {"ability": "close_popup"})
+        return str(result.get("text", "") if isinstance(result, dict) else result)
+
+    def has_question(self) -> bool:
+        if self.question and self.clock() - self.question.when > PENDING_MINUTES * 60:
+            self.question = None
+        return self.question is not None
+
+    def answer(self, text: str) -> str | None:
+        """The user's answer to "close it, or fill it in?"; None when it isn't one (then handle it normally)."""
+        if not self.has_question():
+            return None
+        q, self.question = self.question, None
+        if _FILL_IT.search(text):
+            self.popups_left_open[q.popup] = self.clock()
+            return ("Okay, I'll leave it open. Tell me what to pick, and I'll ask you before pressing Submit. "
+                    "Say what you wanted next when you're done.")
+        if not _CLOSE_IT.search(text):
+            return None
+        result = self._close_popup()
+        if looks_failed(result):
+            return f"I couldn't close it: {self._spoken(result)}"
+        if _ALWAYS.search(text):
+            self.popup_prefs[q.popup] = "close"
+            self._save_popup_prefs()
+            result += " I'll always close it from now on."
+        if not q.steps:  # asked before planning: plan it now, with the page in view
+            return f"{result} {self.run(q.request) or ''}".strip()
+        out = Outcome(q.request + " (after the pop-up)", source="resumed")
+        t0 = self.clock()
+        try:
+            rest = self._execute(q.request, Plan(q.steps, q.reply, source="resumed"), out, remember=False)
+        finally:
+            out.seconds = self.clock() - t0
+            self.last = out
+            log.info(out.line())
+        return f"{result} {rest}"
+
+    def _load_popup_prefs(self) -> dict:
+        try:
+            return json.loads(self.popup_file.read_text(encoding="utf-8")) if self.popup_file else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _save_popup_prefs(self):
+        if self.popup_file:
+            try:
+                self.popup_file.write_text(json.dumps(self.popup_prefs, indent=1), encoding="utf-8")
+            except OSError:
+                log.warning("Couldn't save the pop-up choices", exc_info=True)
 
     def _blocked_by_dialog(self, step: Step, before) -> str | None:
         """Keys typed while a dialog box is open go to the dialog, not the page (29 Sep: F and Space were

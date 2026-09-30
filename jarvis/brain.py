@@ -460,6 +460,22 @@ class Brain:
             self.skills.budget = None
             self.skills.launches = None
 
+    def answer_agent(self, text: str) -> str | None:
+        """The answer to the agent's question about a pop-up ("close it, or fill it in?"), before anything
+        else sees it: "close" on its own would otherwise close the whole window."""
+        agent = self.agent
+        if not agent or not agent.has_question():
+            return None
+        self.skills.confirmed = False  # a "yes" here closes the pop-up; it never submits anything
+        mouse.reset_takeover()
+        try:
+            reply = agent.answer(text)
+        except mouse.UserTookOver:
+            return "You moved the mouse, so I stopped."
+        except mouse.Cancelled:
+            return "Stopped."
+        return None if reply is None else self._agent_done(text, reply)
+
     def _agent_turn(self, text: str, unsure: bool) -> str | None:
         """The agent core's reply, or None when the old loop should handle this request (it needs eyes,
         it's a question, or no usable plan came back)."""

@@ -32,6 +32,11 @@ def _ocr() -> list[str]:
     return ocr.read_front()
 
 
+def _popup() -> str:
+    from ..skills import popups
+    return popups.title() if elements.front_is_browser() else ""
+
+
 def _playing() -> bool | None:
     from . import ocr
     return ocr.playing()
@@ -48,11 +53,12 @@ class Readers:
     dialog: Callable[[], str] = elements.open_dialog          # a dialog box open in front ("" = none)
     fullscreen: Callable[[], bool] = elements.is_fullscreen   # the front window covers the whole monitor
     playing: Callable[[], bool | None] = _playing             # any media playing (None = no media at all)
+    popup: Callable[[], str] = _popup                         # a site's pop-up form over the page ("" = none)
 
 
 _EMPTY = {"front": "", "windows": [], "items": [], "url": None, "focus": "none", "ocr": [], "dialog": "",
-          "fullscreen": False, "playing": None}
-_PRIVATE = ("items", "focus", "ocr", "dialog")  # never read inside a secrets file's window
+          "fullscreen": False, "playing": None, "popup": ""}
+_PRIVATE = ("items", "focus", "ocr", "dialog", "popup")  # never read inside a secrets file's window
 
 
 @dataclass
@@ -110,6 +116,11 @@ class Snapshot:
     def playing(self) -> bool | None:
         return self._get("playing")
 
+    @property
+    def popup(self) -> str:
+        """Only in a browser (read after the address, which is None elsewhere)."""
+        return (self._get("popup") or "") if self.url else ""
+
     def text(self, max_items: int = 40, max_windows: int = 8) -> str:
         """For the AI planner: short, and only facts."""
         lines = [f"Front window: {self.front or 'none'}"]
@@ -120,6 +131,9 @@ class Snapshot:
             lines.append(f"Address: {self.url}")
         if self.dialog:
             lines.append(f"A DIALOG BOX IS OPEN in front: {self.dialog!r} (deal with it first: keys and clicks go to it)")
+        if self.popup:
+            lines.append(f"A POP-UP FORM is over the page: {self.popup!r} (the user decides whether to close it or "
+                         "fill it in; never fill in or submit it on your own)")
         if self.fullscreen:
             lines.append("The front window is in full screen.")
         if self.playing is not None:

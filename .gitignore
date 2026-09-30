@@ -5,4 +5,6 @@ models/
 .env
 data/learned.json
 data/plans.json
+data/popups.json
+data/pw.json
 *.bin

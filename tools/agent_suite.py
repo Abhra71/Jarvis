@@ -35,6 +35,7 @@ TASKS = [
     "What's on my screen?",
     "Open Physics Wallah, my batch, chemistry",
     "Pause, go back 30 seconds, and turn on subtitles",
+    "Open Khazana chemistry",
 ]
 
 
@@ -90,7 +91,7 @@ def plan_only(numbers: list[int]):
               "verdict": verdict, "steps": steps, "reply": said, "prompt_chars": len(system) + len(user)})
 
 
-def live(numbers: list[int]):
+def live(numbers: list[int], then: list[str] = ()):
     from jarvis.assistant import Assistant
 
     config = load_config()
@@ -104,12 +105,18 @@ def live(numbers: list[int]):
         print(f"[{n}] {task}\n     -> {reply}  ({took:.1f}s; {last.line() if last else 'old loop'})")
         _log({"mode": "live", "task": n, "said": task, "seconds": round(took, 2), "reply": reply,
               "agent": last.__dict__ if last else None})
+        for said in then:  # the user's answers to Jarvis's questions ("close it")
+            t0 = time.monotonic()
+            reply = a.handle_text(said)
+            print(f"     user: {said}\n     -> {reply}  ({time.monotonic() - t0:.1f}s)")
+            _log({"mode": "live", "task": n, "said": said, "seconds": round(time.monotonic() - t0, 2), "reply": reply})
 
 
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("tasks", nargs="*", type=int, help="task numbers (default: all)")
     p.add_argument("--live", action="store_true", help="really do the tasks on this PC")
+    p.add_argument("--then", action="append", default=[], help="what the user says next (answers), in order")
     args = p.parse_args()
     logging.basicConfig(level=logging.WARNING)
     if args.live:  # every step, check and timing, for the review (logs/agent_suite.log)
@@ -120,7 +127,7 @@ def main():
         logging.getLogger().setLevel(logging.INFO)
         logging.getLogger().handlers[0].setLevel(logging.WARNING)
     numbers = args.tasks or list(range(1, len(TASKS) + 1))
-    (live if args.live else plan_only)(numbers)
+    live(numbers, args.then) if args.live else plan_only(numbers)
 
 
 if __name__ == "__main__":

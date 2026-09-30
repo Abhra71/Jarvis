@@ -97,7 +97,7 @@ class MatchTest(unittest.TestCase):
                 self.assertEqual(abilities.handle("find the newest video"), "There's no video in Downloads.")
 
     def test_catalog_for_the_ai_is_short(self):
-        self.assertLess(len(abilities.catalog_text()), 200)
+        self.assertLess(len(abilities.catalog_text()), 300)  # grows ~20 chars per ability with a value
         self.assertIn("snap_left", abilities.declaration()["parameters"]["properties"]["ability"]["enum"])
 
 

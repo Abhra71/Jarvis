@@ -385,13 +385,24 @@ def front_window() -> str:
 
 
 def secret_windows() -> list[tuple[int, int, int, int]]:
-    """Screen rectangles of visible windows showing a secrets file (.env, keys, passwords), in front or not."""
+    """Screen rectangles of visible windows showing a secrets file (.env, keys, passwords), in front or not.
+    One hidden completely behind another window is left out (30 Sep: a maximized Chrome in front of VS Code
+    was half blacked out)."""
     from .files import is_secret
-    out = []
-    for hwnd, _, title in _app_windows():
-        if is_secret(title) and not win32gui.IsIconic(hwnd):
-            out.append(win32gui.GetWindowRect(hwnd))
+    out, above = [], []
+    for hwnd, _, title in _app_windows():  # front-most first
+        if win32gui.IsIconic(hwnd):
+            continue
+        rect = win32gui.GetWindowRect(hwnd)
+        if is_secret(title) and not any(_covers(a, rect) for a in above):
+            out.append(rect)
+        above.append(rect)
     return out
+
+
+def _covers(a, b, slack: int = 12) -> bool:
+    """Does window rect a hide all of b? (Windows' invisible resize borders are a few pixels wide.)"""
+    return a[0] <= b[0] + slack and a[1] <= b[1] + slack and a[2] >= b[2] - slack and a[3] >= b[3] - slack
 
 
 def blank_secret_windows(img, offset: tuple[int, int] = (0, 0)) -> int:

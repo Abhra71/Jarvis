@@ -215,6 +215,24 @@ def is_fullscreen() -> bool:
     return l <= ml and t <= mt and r >= mr and b >= mb
 
 
+def page_top() -> int:
+    """Where the web page starts on screen in the front browser (below its tabs, address bar and bookmarks);
+    0 elsewhere. Text above it is the browser's own: 30 Sep, "Physics Wallah" was clicked on the tab strip."""
+    try:
+        hwnd = win32gui.GetForegroundWindow()
+        if desktop._process_name(hwnd) not in desktop.BROWSERS:
+            return 0
+        UIA, uia = desktop._uia()
+        doc = uia.ElementFromHandle(hwnd).FindFirst(UIA.TreeScope_Descendants, uia.CreatePropertyCondition(
+            UIA.UIA_ControlTypePropertyId, UIA.UIA_DocumentControlTypeId))
+        if doc:
+            return max(0, doc.CurrentBoundingRectangle.top)
+        return win32gui.GetWindowRect(hwnd)[1] + 150  # no page yet: a typical toolbar height
+    except Exception:
+        log.debug("Couldn't find where the page starts", exc_info=True)
+        return 0
+
+
 def front_is_browser() -> bool:
     try:
         return desktop._process_name(win32gui.GetForegroundWindow()) in desktop.BROWSERS

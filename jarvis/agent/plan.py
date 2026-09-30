@@ -157,11 +157,36 @@ _NOT_APPS = {"it", "this", "that", "this window", "the window", "window", "scree
              "left", "right", "it to", "this to"}
 
 
+_PW = re.compile(r"\b(pw|physics wallah)\b")
+_NOT_PW = re.compile(r"\b(youtube|google|search|video|videos)\b")
+
+
+def _pw_plan(text: str, front: str) -> list[Step] | None:
+    """'Open Physics Wallah, my batch, chemistry' / 'open chemistry' with PW in front: the PW route in code."""
+    from ..skills.sites import pw
+    t = normalize(text)
+    if _NOT_PW.search(t):
+        return None
+    named = bool(_PW.search(t))
+    on_pw = "physics wallah" in (front or "").lower()
+    if "khazana" in t:
+        return [Step("do", {"ability": "pw_khazana", "value": t})]
+    subject = pw.subject_in(t)
+    if subject and (named or (on_pw and re.match(r"(open|go to|show|take me to)\b", t))):
+        return [Step("do", {"ability": "pw_subject", "value": subject})]
+    if named and re.fullmatch(r"(open|go to|show( me)?|take me to) (my )?(pw|physics wallah)( and)?,?( (my )?batch)?", t):
+        return [Step("do", {"ability": "pw_batch"})]
+    return None
+
+
 def code_plan(text: str, front: str = "", unsure: bool = False) -> Plan | None:
     """'snap left and maximise', 'play lofi on YouTube and make it full screen', 'pause, back 30 seconds and
     subtitles on' -> steps done in code, no AI. Only when *every* part is an ability or a YouTube command."""
     from ..skills.sites import youtube
 
+    pw_steps = _pw_plan(text, front)
+    if pw_steps:
+        return Plan(pw_steps, source="code")
     parts = request_parts(text)
     if len(parts) < 2:
         return None  # one part: the site packs and abilities.handle already had their chance before the AI

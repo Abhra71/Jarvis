@@ -110,6 +110,11 @@ class Assistant:
 
     def _handle(self, text: str, unsure: bool = False) -> tuple[str, str]:
         """Returns (who handled it, reply)."""
+        # The answer to the agent's own question comes first ("close" means the pop-up, not the window).
+        answer = getattr(self.brain, "answer_agent", None)
+        reply = answer(text) if callable(answer) else None
+        if isinstance(reply, str):
+            return "agent", reply
         # The main sites first: common actions there are done in code, instantly, with no AI.
         site = sites.handle(text, self.skills.browser, unsure)
         if site:

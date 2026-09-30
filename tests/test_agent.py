@@ -43,6 +43,7 @@ class FakeDesktop:
         self.dialog = ""
         self.fullscreen = False
         self.playing = None
+        self.popup = ""
         self.calls = []
         self.confirmed = False
         self.tools = TOOLS
@@ -52,7 +53,8 @@ class FakeDesktop:
         return context.Readers(front=lambda: self.front, windows=lambda: list(self.windows),
                                items=lambda: list(self.items), url=lambda: self.url, focus=lambda: self.focus,
                                ocr=lambda: list(self.ocr), dialog=lambda: self.dialog,
-                               fullscreen=lambda: self.fullscreen, playing=lambda: self.playing)
+                               fullscreen=lambda: self.fullscreen, playing=lambda: self.playing,
+                               popup=lambda: self.popup)
 
     def open(self, app, items=()):
         self.front = f"{app.lower()}: {app}"
@@ -82,7 +84,8 @@ def _agent(desk, answers, tmp):
     think = mock.Mock(side_effect=lambda system, user: json.dumps(answers.pop(0)))
     clock = Clock()
     a = Agent(desk, think, narrate=mock.Mock(), readers=desk.readers(),
-              memory=planmod.PlanMemory(Path(tmp) / "plans.json"), sleep=clock.sleep, clock=clock)
+              memory=planmod.PlanMemory(Path(tmp) / "plans.json"), sleep=clock.sleep, clock=clock,
+              popup_file=None)
     return a, think
 
 
@@ -495,7 +498,7 @@ class GroundedReplyTest(unittest.TestCase):
                 "reply": "Opened the Physics Wallah chemistry batch page."}
         with tempfile.TemporaryDirectory() as tmp:
             agent, _ = _agent(desk, [plan], tmp)
-            self.assertEqual(agent.run("open physics wallah, my batch, chemistry"), "Searching google for pw chemistry.")
+            self.assertEqual(agent.run("open the school portal, my class, chemistry"), "Searching google for pw chemistry.")
 
     def test_the_claim_is_said_when_the_result_was_seen(self):
         desk = FakeDesktop()
@@ -504,7 +507,7 @@ class GroundedReplyTest(unittest.TestCase):
                 "reply": "Your chemistry page is open."}
         with tempfile.TemporaryDirectory() as tmp:
             agent, _ = _agent(desk, [plan], tmp)
-            self.assertEqual(agent.run("open pw chemistry"), "Your chemistry page is open.")
+            self.assertEqual(agent.run("open the school portal chemistry"), "Your chemistry page is open.")
 
 
 class SecretsOnScreenTest(unittest.TestCase):
@@ -515,10 +518,106 @@ class SecretsOnScreenTest(unittest.TestCase):
         wins = [(1, "claude.exe", "Claude"), (2, "code.exe", ".env - Visual Studio Code")]
         with mock.patch.object(desktop, "_app_windows", return_value=wins), \
                 mock.patch.object(desktop.win32gui, "IsIconic", return_value=False), \
-                mock.patch.object(desktop.win32gui, "GetWindowRect", return_value=(100, 0, 200, 100)):
+                mock.patch.object(desktop.win32gui, "GetWindowRect",
+                                  side_effect=lambda h: {1: (0, 0, 100, 100), 2: (100, 0, 200, 100)}[h]):
             self.assertEqual(desktop.blank_secret_windows(img), 1)
         self.assertEqual(img.getpixel((150, 50)), (0, 0, 0))
         self.assertEqual(img.getpixel((50, 50)), (255, 255, 255))
+
+    def test_a_secrets_window_hidden_behind_a_maximized_one_is_not_blanked(self):
+        from PIL import Image
+        from jarvis.skills import desktop
+        img = Image.new("RGB", (200, 100), "white")
+        wins = [(1, "chrome.exe", "PW - Google Chrome"), (2, "code.exe", ".env - Visual Studio Code")]
+        with mock.patch.object(desktop, "_app_windows", return_value=wins), \
+                mock.patch.object(desktop.win32gui, "IsIconic", return_value=False), \
+                mock.patch.object(desktop.win32gui, "GetWindowRect",
+                                  side_effect=lambda h: {1: (-9, -9, 209, 109), 2: (100, 0, 200, 100)}[h]):
+            self.assertEqual(desktop.blank_secret_windows(img), 0)
+        self.assertEqual(img.getpixel((150, 50)), (255, 255, 255))
+
+
+class PopupTest(unittest.TestCase):
+    """30 Sep: PW's "Student Feedback Form" covers the page. The user decides: close it, or fill it in."""
+
+    def _pw(self):
+        desk = FakeDesktop()
+        desk.front, desk.url = "chrome: School Portal - Google Chrome", "https://portal.example/batches"
+        desk.windows = [desk.front]
+        desk.items = [_el("Batches Batches"), _el("Chemistry", "link")]
+        desk.popup = "Student Feedback Form"
+
+        def close(args):
+            if args.get("ability") == "close_popup":
+                desk.popup = ""
+                return "Closed the Student Feedback Form."
+            return "Done."
+        desk.effects["do"] = close
+        return desk
+
+    def _plan(self):
+        return {"steps": [{"do": "click_element", "args": {"name": "Chemistry"}}], "reply": "Opened Chemistry."}
+
+    def test_asks_before_working_under_a_popup(self):
+        desk = self._pw()
+        with tempfile.TemporaryDirectory() as tmp:
+            agent, _ = _agent(desk, [self._plan()], tmp)
+            reply = agent.run("open chemistry")
+        self.assertIn("Student Feedback Form", reply)
+        self.assertIn("close it, or do you want to fill it in", reply)
+        self.assertEqual(desk.calls, [])  # nothing clicked behind it
+        self.assertTrue(agent.has_question())
+
+    def test_close_then_carry_on(self):
+        desk = self._pw()
+        with tempfile.TemporaryDirectory() as tmp:
+            agent, _ = _agent(desk, [self._plan()], tmp)
+            agent.run("open chemistry")
+            reply = agent.answer("close it")
+        self.assertTrue(reply.startswith("Closed the Student Feedback Form."))
+        self.assertEqual([c[0] for c in desk.calls], ["do", "click_element"])
+        self.assertFalse(agent.has_question())
+
+    def test_fill_it_in_leaves_it_open_and_never_submits(self):
+        desk = self._pw()
+        with tempfile.TemporaryDirectory() as tmp:
+            agent, _ = _agent(desk, [self._plan(), self._plan()], tmp)
+            agent.run("open chemistry")
+            reply = agent.answer("I'll fill it in")
+            self.assertIn("leave it open", reply)
+            self.assertEqual(desk.calls, [])
+            agent.run("open chemistry")  # not asked again while they fill it in
+        self.assertEqual([c[0] for c in desk.calls], ["click_element"])
+
+    def test_always_close_is_remembered(self):
+        desk = self._pw()
+        with tempfile.TemporaryDirectory() as tmp:
+            prefs = Path(tmp) / "popups.json"
+            agent, _ = _agent(desk, [self._plan(), self._plan()], tmp)
+            agent.popup_file = prefs
+            agent.run("open chemistry")
+            self.assertIn("always close it", agent.answer("close it, always close it"))
+            desk.popup = "Student Feedback Form"
+            reply = agent.run("open chemistry")  # closed without asking
+            self.assertTrue(prefs.exists())
+        self.assertNotIn("pop-up", reply)
+        self.assertEqual([c[0] for c in desk.calls], ["do", "click_element", "do", "click_element"])
+
+    def test_something_else_is_not_an_answer(self):
+        desk = self._pw()
+        with tempfile.TemporaryDirectory() as tmp:
+            agent, _ = _agent(desk, [self._plan()], tmp)
+            agent.run("open chemistry")
+            self.assertIsNone(agent.answer("what's the time"))
+        self.assertFalse(agent.has_question())
+
+    def test_a_request_about_the_popup_is_not_asked_about(self):
+        desk = self._pw()
+        plan = {"steps": [{"do": "click_element", "args": {"name": "Chemistry"}}], "reply": ""}
+        with tempfile.TemporaryDirectory() as tmp:
+            agent, _ = _agent(desk, [plan], tmp)
+            agent.run("click chemistry on the feedback form")
+        self.assertEqual([c[0] for c in desk.calls], ["click_element"])
 
 
 class OcrFindTest(unittest.TestCase):
@@ -575,3 +674,33 @@ class BrainWiringTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PwRouteTest(unittest.TestCase):
+    """30 Sep: PW mapped live; its routes are code plans (no AI)."""
+
+    def _plan(self, text, front=""):
+        p = planmod.code_plan(text, front)
+        return p and [(s.args.get("ability"), s.args.get("value")) for s in p.steps]
+
+    def test_batch_subject_and_khazana(self):
+        pw_front = "chrome: Physics Wallah - Google Chrome"
+        self.assertEqual(self._plan("Open Physics Wallah, my batch, chemistry"), [("pw_subject", "chemistry")])
+        self.assertEqual(self._plan("open chemistry", pw_front), [("pw_subject", "chemistry")])
+        self.assertIsNone(self._plan("open chemistry"))  # not on PW, PW not named: not this route
+        self.assertEqual(self._plan("open chemistry by sanya on pw"), [("pw_subject", "chemistry by sanya")])
+        self.assertEqual(self._plan("open khazana chemistry 2026")[0][0], "pw_khazana")
+        self.assertIsNone(self._plan("search physics wallah chemistry on youtube"))
+
+    def test_words(self):
+        from jarvis.skills.sites import pw
+        self.assertIsNone(pw.subject_in("open my batch on physics wallah"))  # the site's name isn't physics
+        self.assertEqual(pw.subject_in("open maths"), "maths")
+        self.assertEqual(pw.said_wanted("open khazana sunil sir organic chemistry 2026"), "sunil sir organic chemistry")
+        self.assertTrue(pw._label_matches("Mathematics 2026", "maths", "2026"))
+        self.assertFalse(pw._label_matches("Chemistry 2026", "chemistry", "2024"))
+
+    def test_notices_close_forms_ask(self):
+        from jarvis.skills import popups
+        self.assertTrue(popups.is_notice("Milestone Achieved"))
+        self.assertFalse(popups.is_notice("Student Feedback Form"))

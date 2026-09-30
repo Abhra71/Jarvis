@@ -1,7 +1,7 @@
 """Browser tabs by name: instant, no AI, and checked (the tabs are read again afterwards)."""
 
 from . import ability
-from ..skills import desktop
+from ..skills import desktop, popups
 
 _NOT_A_NAME = r"(?!(?:this|that|the current|current|it|my|all|the|other|every|these|those)\b)"
 
@@ -17,3 +17,10 @@ def close_tabs(name: str):
          rf"close (?:the |my )?{_NOT_A_NAME}(?P<value>.+?) tab", value="tab name")
 def close_tab(name: str):
     return desktop.close_tab(name)
+
+
+@ability("close_popup", "close the pop-up form over the page (feedback form, survey, newsletter)",
+         r"(?:close|dismiss|skip|remove|hide) (?:the |this |that )?(?:pop ?up|popup|feedback form|feedback|survey|form)"
+         r"(?: form| box| window)?")
+def close_popup():
+    return popups.close()
