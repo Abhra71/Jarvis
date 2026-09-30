@@ -42,7 +42,7 @@ Run the **whole PC by voice**: sit back and do ~99% of computer work reliably, f
 
 ## Next, in the user's order
 1. **Agent core**: design and task suite in `docs/agent-core.md`. Build it there.
-2. **Remaining abilities**: dictation, Bluetooth/Wi-Fi/brightness/night light, WhatsApp desktop + Gmail, file-upload dialogs, voice coding (VS Code C++, BlueJ), game on/off (eFootball).
+2. **Remaining abilities** (Phase 3, started 30 Sep): done: dictation, switches (night light, Bluetooth, Wi-Fi, airplane mode, energy saver, captions, hotspot), brightness, Bluetooth connect, Gmail (draft in code, send only after a yes). Left: file-upload dialogs, voice coding (VS Code C++, BlueJ), game on/off (eFootball). **WhatsApp dropped by the user (30 Sep).**
 3. **Better logging**, then the user's 2–3 day trial, then a log review and fixes.
 4. **Self-healing**: corrections, visible names, per-app notes (site notes Jarvis writes for itself: search address, pop-ups, menus), **pattern learning** ("search X on Amazon" learned once works for any X; approved 30 Sep), daily self-review, "forget that".
 5. **Chess** last.

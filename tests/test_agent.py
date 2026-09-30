@@ -885,3 +885,39 @@ class DictationTest(unittest.TestCase):
         with mock.patch("jarvis.assistant.elements.focused_kind", return_value="button"):
             self.assertIn("text box first", a._handle("start dictation")[1])
         self.assertFalse(a.dictating)
+
+
+class GmailFlowTest(unittest.TestCase):
+    """30 Sep: 'email mom saying I'll be late' is written in code; it's sent only after the user's yes."""
+
+    def test_send_needs_a_spoken_yes(self):
+        from jarvis.skills import needs_confirmation
+        self.assertEqual(needs_confirmation("do", {"ability": "gmail_send"}, lambda: "chrome: Gmail"), "send the email")
+        self.assertIsNone(needs_confirmation("do", {"ability": "gmail_draft", "value": "x"}, lambda: "chrome: Gmail"))
+
+    def test_draft_then_ask_then_send_on_yes(self):
+        desk = FakeDesktop()
+
+        def do(args):
+            if args["ability"] == "gmail_draft":
+                return "Email to Mom (mom@example.com), subject 'Dinner', saying \"I'll be late.\", is ready."
+            if not desk.confirmed:
+                return "Needs confirmation: this would send the email. Nothing was done. Ask the user."
+            return "Sent."
+        desk.effects["do"] = do
+        with tempfile.TemporaryDirectory() as tmp:
+            agent, think = _agent(desk, [], tmp)
+            reply = agent.run("Email Mom about dinner saying I'll be late.")
+            self.assertIn("mom@example.com", reply)
+            self.assertTrue(reply.endswith("Shall I send the email?"))
+            self.assertTrue(agent.has_pending())
+            desk.confirmed = True
+            self.assertEqual(agent.resume(), "Sent.")
+        think.assert_not_called()  # no AI at all
+        self.assertEqual([c[1]["ability"] for c in desk.calls], ["gmail_draft", "gmail_send", "gmail_send"])
+
+    def test_parse_keeps_the_users_words(self):
+        from jarvis.skills.sites import gmail
+        self.assertEqual(gmail.parse("Email Mom about dinner saying I'll be late."), ("Mom", "Dinner", "I'll be late."))
+        self.assertEqual(gmail.parse("email abhra at gmail dot com saying test")[0], "abhra@gmail.com")
+        self.assertIsNone(gmail.parse("open gmail"))

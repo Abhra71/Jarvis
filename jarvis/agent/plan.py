@@ -161,6 +161,15 @@ _PW = re.compile(r"\b(pw|physics wallah)\b")
 _NOT_PW = re.compile(r"\b(youtube|google|search|video|videos)\b")
 
 
+def _mail_plan(text: str) -> list[Step] | None:
+    """'email mom saying I'll be late': write it in Gmail (code), then send, which waits for the user's yes."""
+    from ..skills.sites import gmail
+    said = " ".join(text.split())  # the user's words as said: the email keeps their punctuation
+    if not gmail.parse(said) or _NOT_PW.search(normalize(text)):
+        return None
+    return [Step("do", {"ability": "gmail_draft", "value": said}), Step("do", {"ability": "gmail_send"})]
+
+
 def _pw_plan(text: str, front: str) -> list[Step] | None:
     """'Open Physics Wallah, my batch, chemistry' / 'open chemistry' with PW in front: the PW route in code."""
     from ..skills.sites import pw
@@ -187,6 +196,9 @@ def code_plan(text: str, front: str = "", unsure: bool = False) -> Plan | None:
     pw_steps = _pw_plan(text, front)
     if pw_steps:
         return Plan(pw_steps, source="code")
+    mail_steps = _mail_plan(text)
+    if mail_steps:
+        return Plan(mail_steps, source="code")
     parts = request_parts(text)
     if len(parts) < 2:
         return None  # one part: the site packs and abilities.handle already had their chance before the AI

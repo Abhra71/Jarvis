@@ -263,7 +263,10 @@ class Agent:
                 if result.startswith("Needs confirmation"):
                     self.pending = Pending(request, steps[i:], reply)
                     out.steps, out.result = len(executed), "needs_yes"
-                    return _ask_for_yes(result)
+                    # What's about to go ("Email to Mom (mom@…), subject …, is ready.") before the question.
+                    ready = results[-1] + " " if results and executed[-1].tool == "do" \
+                        and not looks_failed(results[-1]) else ""  # an ability's summary, not "Typed it."
+                    return ready + _ask_for_yes(result)
                 if looks_failed(result):
                     why = result
                 else:

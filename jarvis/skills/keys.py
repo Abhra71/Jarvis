@@ -100,7 +100,8 @@ def check(keys: str, front: str) -> tuple[str | None, str | None]:
             return f"{_BLOCKED[k]}; I never do that.", None
         if k in _FILE_DELETE and front.startswith("explorer"):
             return "that would delete files, and deleting is turned off.", None
-    if any(k.endswith("{ENTER}") for k in presses) and any(app in front for app in _CHAT_APPS):
+    # Enter (or Ctrl+Enter) sends; Shift+Enter is only a new line (dictation's "new line", 30 Sep).
+    if any(k.endswith("{ENTER}") and k != "+{ENTER}" for k in presses) and any(app in front for app in _CHAT_APPS):
         return None, "press Enter in a chat or mail window, which sends the message"
     if any(k == "{VK_LWIN down}l{VK_LWIN up}" for k in presses):
         return None, "lock the PC"

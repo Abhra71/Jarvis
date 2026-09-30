@@ -69,8 +69,13 @@ def site_url(app: str) -> str | None:
     return None
 
 
+SENDING_ABILITIES = {"gmail_send": "send the email"}  # abilities that send something: always a spoken yes first
+
+
 def needs_confirmation(name: str, args: dict, front_window) -> str | None:
     """If this action is the kind that can't be taken back, describe it; else None."""
+    if name == "do" and args.get("ability") in SENDING_ABILITIES:
+        return SENDING_ABILITIES[args["ability"]]
     if name in ("click", "click_pair", "click_element"):
         target = str(args.get("target", ""))
         if _RISKY_CLICK.search(target):

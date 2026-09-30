@@ -24,7 +24,7 @@ from jarvis.config import load_config  # noqa: E402
 
 TASKS = [
     "Play lofi on YouTube and make it full screen",
-    "Open WhatsApp and message Mom: I'll be late",
+    "Email abhrachakraborty21 at gmail dot com saying Jarvis email test",  # WhatsApp dropped by the user (30 Sep)
     "Connect my Rockerz headphones",
     "Open my Downloads and find the newest PDF",
     "Upload my resume here",
