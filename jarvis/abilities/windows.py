@@ -180,7 +180,7 @@ SETTINGS = {
          r"(?:open|show|go to) (?:the |my )?(?P<value>.+?) settings",
          r"(?:open|show) settings for (?P<value>.+)",
          r"(?:open |show )?(?:windows )?settings",
-         value="settings page, e.g. bluetooth, wifi, display, sound")
+         value="page, e.g. display")
 def open_settings(value: str | None = None):
     page = (value or "").strip().lower()
     if page and page not in SETTINGS:

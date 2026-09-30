@@ -115,7 +115,7 @@ class SmallRequestTest(unittest.TestCase):
         # A typical command is well under the old ~2,900 tokens of prompt + all 30 tools. chars/4 over-counts
         # JSON by ~25%: on 27 Sep this estimate said ~1,620 while Groq measured 1,310 real tokens (target 1,500).
         size = len(action_prompt) + len(json.dumps(action["tools"]))
-        self.assertLess(size / 4, 1800)
+        self.assertLess(size / 4, 1900)  # 30 Sep: +7 abilities in the "do" tool
 
     def test_more_tools_adds_a_group_mid_request(self):
         skills = _skills()

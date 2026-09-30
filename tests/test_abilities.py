@@ -97,7 +97,7 @@ class MatchTest(unittest.TestCase):
                 self.assertEqual(abilities.handle("find the newest video"), "There's no video in Downloads.")
 
     def test_catalog_for_the_ai_is_short(self):
-        self.assertLess(len(abilities.catalog_text()), 300)  # grows ~20 chars per ability with a value
+        self.assertLess(len(abilities.catalog_text()), 380)  # ~20 chars per ability with a value (30 Sep: 11 of them)
         self.assertIn("snap_left", abilities.declaration()["parameters"]["properties"]["ability"]["enum"])
 
 
@@ -140,3 +140,44 @@ class PhraseMemoryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SystemSwitchesTest(unittest.TestCase):
+    """30 Sep: Quick Settings switches, brightness and Bluetooth devices by voice."""
+
+    def test_switch_phrases(self):
+        from jarvis.abilities.system import _parse_switch
+        cases = {"turn on night light": ("night light", True), "night light off": ("night light", False),
+                 "turn off the bluetooth": ("bluetooth", False), "disable wi fi": ("wifi", False),
+                 "switch bluetooth on": ("bluetooth", True), "turn on airplane mode": ("airplane mode", True)}
+        for said, want in cases.items():
+            ab, value = abilities.match(said)
+            self.assertEqual(ab.name, "switch_setting", said)
+            self.assertEqual(_parse_switch(value), want, said)
+        self.assertIsNone(abilities.match("turn on the tv"))
+
+    def test_brightness_phrases(self):
+        for said, want in {"brightness 40": "40", "set brightness to 70 percent": "70", "brightness up": "up",
+                           "dim the screen": "dim", "make the screen brighter": "brighter"}.items():
+            self.assertEqual(abilities.match(said)[0].name, "set_brightness", said)
+            self.assertEqual(abilities.match(said)[1], want, said)
+
+    def test_brightness_steps_and_limits(self):
+        from jarvis.abilities import system
+        with mock.patch.object(system.quick, "brightness", return_value=46), \
+                mock.patch.object(system.quick, "set_brightness", side_effect=lambda v: v) as setb:
+            self.assertEqual(system.set_brightness("down"), 36)
+            self.assertEqual(system.set_brightness("min"), 5)  # never a black screen
+            self.assertEqual(system.set_brightness("max"), 100)
+
+    def test_connect_phrases_never_mean_wifi(self):
+        self.assertEqual(abilities.match("connect my rockerz headphones")[1], "rockerz")
+        self.assertIsNone(abilities.match("connect to wifi"))
+        self.assertIsNone(abilities.match("connect to the internet"))
+
+    def test_a_device_is_never_guessed(self):
+        from jarvis.skills.quick import _pick
+        devs = [("Rockerz 480", "Rockerz 480, State Not connected", None)]
+        self.assertEqual(_pick(devs, "headphones")[0], "Rockerz 480")  # the only one, called generically
+        self.assertEqual(_pick(devs, "rockers")[0], "Rockerz 480")
+        self.assertIsNone(_pick(devs, "jbl speaker"))

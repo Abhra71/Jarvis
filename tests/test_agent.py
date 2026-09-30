@@ -214,7 +214,7 @@ class PlanTest(unittest.TestCase):
 
     def test_prompt_is_compact(self):
         system, user = planmod.planning_prompt("open whatsapp", TOOLS, "Front window: x", "", "", False)
-        self.assertLess(len(system), 6000)
+        self.assertLess(len(system), 6400)  # 30 Sep: +7 abilities (switches, brightness, Bluetooth, files, PW)
         self.assertNotIn("look_at_screen", system)
         self.assertIn("open_app(name)", system)
 

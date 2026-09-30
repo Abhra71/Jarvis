@@ -75,7 +75,7 @@ _NEWEST = r"(?:newest|latest|most recent|last|recent|new)"
          rf"(?P<value>(?:(?:open|go to) (?:my |the )?(?:{'|'.join(_FOLDERS)})(?: folder)? (?:and )?)?"
          rf"(?:find|show|select|open|where is|where's|get)(?: me)? (?:my |the )?{_NEWEST} (?:{_KIND_WORDS})s?"
          rf"(?: (?:in|from) (?:my |the )?(?:{'|'.join(_FOLDERS)})(?: folder)?)?)",
-         value="what and where, e.g. 'newest pdf in downloads'")
+         value="e.g. newest pdf in downloads")
 def find_newest(said: str, open_it: bool = False) -> str:
     said = said.lower()
     folder, exts, label = _parse(said)
@@ -179,11 +179,11 @@ def pick(folder, said: str):
     return scored[0][1], ""
 
 
-@ability("open_file_here", "open a file or folder in the File Explorer folder, by its name or size",
+@ability("open_file_here", "open a file in the open Explorer folder",
          r"(?:there(?:'s| is) an? (?:full |whole )?(?:file|folder|video) (?:called|named) )(?P<value>.+?),? (?:please )?open (?:that|it)(?: one)?",
          r"open (?:the |that )?(?:file|folder|video|pdf|document|photo|song|one) (?:called|named) (?P<value>.+)",
          r"(?:open|play) (?:the |that )?(?:file|video|one|pdf|song) (?:with|of) (?:a )?size (?:of )?(?P<value>.+)",
-         value="file name or size")
+         value="name or size")
 def open_file_here(said: str):
     import os
     folder = explorer_folder()
