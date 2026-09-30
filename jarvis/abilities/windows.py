@@ -51,11 +51,19 @@ def _leave_fullscreen():
         _until(lambda: not elements.is_fullscreen(), 0.8)
 
 
+def _snap_assist_open() -> bool:
+    return any(title == "Snap Assist" for _, _, title in desktop._app_windows())
+
+
 def _close_snap_assist():
-    """After a snap, Windows offers the other windows for the other half; the user didn't ask for that."""
-    time.sleep(0.25)
-    if any(title == "Snap Assist" for _, _, title in desktop._app_windows()):
+    """After a snap, Windows offers the other windows for the other half; the user didn't ask for that.
+    It appears a moment after the snap, so wait for it, then Esc and check it went (30 Sep: it stayed)."""
+    if not _until(_snap_assist_open, 0.8):
+        return
+    for _ in range(2):
         keys.press("esc")
+        if _until(lambda: not _snap_assist_open(), 0.6):
+            return
 
 
 def _on_half(hwnd, side: str) -> bool:
@@ -70,8 +78,14 @@ def _on_half(hwnd, side: str) -> bool:
 def _snap(side: str) -> str:
     _leave_fullscreen()
     hwnd = _front()
+    if _on_half(hwnd, side):
+        # Already there. Pressing again would wrap it round to the other side on one monitor (30 Sep).
+        return f"It's already on the {side}."
     keys.press(f"win+{side}")
-    ok = _until(lambda: _on_half(hwnd, side))
+    ok = _until(lambda: _on_half(hwnd, side), 0.7)
+    if not ok:  # from the other half, the first press only brings it back to the middle
+        keys.press(f"win+{side}")
+        ok = _until(lambda: _on_half(hwnd, side))
     _close_snap_assist()
     return f"Snapped {side}." if ok else f"Not done: the window didn't move to the {side} half."
 

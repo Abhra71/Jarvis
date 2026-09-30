@@ -154,6 +154,7 @@ def proves_nothing(c: Check, before: Snapshot) -> bool:
 
 # ---- better checks from code -----------------------------------------------------------
 
+_SELF_CHECKED_ABILITIES = {"snap_left", "snap_right", "maximize_front", "minimize_front"}
 _FULLSCREEN_KEYS = {"f", "f11"}
 _PLAY_KEYS = {"k", "space", "spacebar", "playpause", "play_pause"}
 
@@ -177,14 +178,16 @@ def auto_check(tool: str, args: dict, check: Check | None, before: Snapshot) -> 
         return Check("playing", "", bool(before.playing))  # playing -> paused, paused -> playing
     if tool == "window" and args.get("action") in ("close", "close_all") and args.get("app"):
         return Check("closed", str(args["app"]))
-    if tool == "youtube":
-        return None  # the pack presses the player's own buttons and reports what it found; AI guesses add nothing
+    if tool == "youtube" or (tool == "do" and args.get("ability") in _SELF_CHECKED_ABILITIES):
+        # These check their own result in code (the pack reads the player; snapping checks where the window
+        # went). An AI guess on top only adds false failures (30 Sep: "text: Chrome snapped left").
+        return None
     if check is None:
         return None
     if tool == "click_element" and check.kind == "element" and not check.negate \
             and _norm(check.value) == _norm(args.get("name", "")):
         return None  # "click Cancel, expect Cancel" (29 Sep): the thing clicked isn't the result
-    if tool in ("press_key", "type_text") and check.kind == "text":
+    if tool in ("press_key", "type_text") and check.kind in ("text", "element") and not check.negate:
         return None  # a guessed label ("text: Playing", "text: commented") after keys: not evidence
     return check
 

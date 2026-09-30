@@ -253,7 +253,9 @@ class Agent:
         if remember and not unsure and plan.source != "code" and (plan.source == "ai" or repaired):
             self.memory.learn(request, executed, reply)
         # Code plans have no written reply: say what each step reported ("Playing Lofi Girl. Full screen.").
-        return reply or " ".join(results[-3:]) or "Done."
+        # (Leaving out "Switched to Chrome." when it was only on the way to something else.)
+        said = [r for s, r in zip(executed, results) if not (s.tool == "window" and s.args.get("action") == "focus")]
+        return reply or " ".join((said or results)[-3:]) or "Done."
 
     def _blocked_by_dialog(self, step: Step, before) -> str | None:
         """Keys typed while a dialog box is open go to the dialog, not the page (29 Sep: F and Space were

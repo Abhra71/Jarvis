@@ -146,6 +146,17 @@ def parse(raw, tools: dict, source: str = "ai") -> Plan:
 
 # ---- plans made in code --------------------------------------------------------
 
+# "snap chrome left", "put vs code on the right", "maximize spotify", "minimise whatsapp"
+_APP_WINDOW = re.compile(r"(?P<verb>snap|put|move|maximi[sz]e|minimi[sz]e) (?:the )?(?P<app>[a-z][a-z0-9 .]{1,30}?)"
+                         r"(?: window)?(?: (?:to |on )?(?:the )?(?P<side>left|right)(?: side| half)?)?")
+_WINDOW_VERBS = {("snap", "left"): "snap_left", ("snap", "right"): "snap_right", ("put", "left"): "snap_left",
+                 ("put", "right"): "snap_right", ("move", "left"): "snap_left", ("move", "right"): "snap_right",
+                 ("maximize", ""): "maximize_front", ("maximise", ""): "maximize_front",
+                 ("minimize", ""): "minimize_front", ("minimise", ""): "minimize_front"}
+_NOT_APPS = {"it", "this", "that", "this window", "the window", "window", "screen", "the screen", "this app",
+             "left", "right", "it to", "this to"}
+
+
 def code_plan(text: str, front: str = "", unsure: bool = False) -> Plan | None:
     """'snap left and maximise', 'play lofi on YouTube and make it full screen', 'pause, back 30 seconds and
     subtitles on' -> steps done in code, no AI. Only when *every* part is an ability or a YouTube command."""
@@ -156,7 +167,17 @@ def code_plan(text: str, front: str = "", unsure: bool = False) -> Plan | None:
         return None  # one part: the site packs and abilities.handle already had their chance before the AI
     on_youtube = "youtube" in normalize(text) or youtube.is_front(front)
     steps = []
+    last_verb = ""
     for part in parts:
+        m = _APP_WINDOW.fullmatch(part)
+        if not m and last_verb:  # "snap chrome left and VS Code right": the verb is said once
+            m = _APP_WINDOW.fullmatch(f"{last_verb} {part}")
+        ability_name = m and _WINDOW_VERBS.get((m.group("verb"), m.group("side") or ""))
+        if ability_name and m.group("app") not in _NOT_APPS:
+            steps += _expand(Step("do", {"ability": ability_name, "value": m.group("app")}))
+            last_verb = m.group("verb")
+            continue
+        last_verb = ""
         hit = abilities.match(part)
         if hit:
             ab, value = hit

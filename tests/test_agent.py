@@ -177,6 +177,14 @@ class PlanTest(unittest.TestCase):
                          [("window", {"app": "Google Chrome", "action": "focus"}), ("do", {"ability": "snap_left"})])
         self.assertEqual(p.steps[0].check, checks.Check("window", "Google Chrome"))
 
+    def test_window_moves_by_app_name_need_no_ai(self):
+        p = planmod.code_plan("Snap Chrome left and VS Code right")
+        self.assertEqual([s.label() for s in p.steps], ["window(app='chrome', action='focus')", "snap_left",
+                                                        "window(app='vs code', action='focus')", "snap_right"])
+        self.assertEqual([s.label() for s in planmod.code_plan("snap left and maximize").steps],
+                         ["snap_left", "maximize_front"])
+        self.assertIsNone(planmod.code_plan("snap chrome left and open notepad"))  # a part the code can't do
+
     def test_youtube_code_plans(self):
         from jarvis.skills.sites import youtube
         p = planmod.code_plan("play lofi on youtube and make it full screen")
