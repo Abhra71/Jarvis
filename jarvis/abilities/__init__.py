@@ -134,4 +134,4 @@ def handle(text: str, unsure: bool = False) -> str | None:
     return None
 
 
-from . import windows  # noqa: E402,F401  (registers the abilities)
+from . import browser, windows  # noqa: E402,F401  (registers the abilities)

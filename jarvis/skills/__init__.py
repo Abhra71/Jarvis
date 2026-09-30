@@ -253,9 +253,10 @@ class Skills:
             Tool("browser", "Tabs, navigation and scrolling in the front browser.",
                  {"action": (S, "", True, desktop.BROWSER_ACTIONS), "times": (I, "", False, None)},
                  lambda action, times=1: desktop.browser_action(action, times)),
-            Tool("close_tab_named", "Close a browser tab by its name/title, in any browser window.",
-                 {"name": (S, "e.g. 'chess', 'YouTube'", True, None)},
-                 lambda name: desktop.close_tab(name)),
+            Tool("close_tab_named", "Close a browser tab by its name/title, in any browser window; all=true closes "
+                                    "every tab that matches.",
+                 {"name": (S, "e.g. 'chess', 'YouTube'", True, None), "all": (B, "", False, None)},
+                 lambda name, all=False: desktop.close_tab(name, bool(all))),
             Tool("youtube", "One YouTube command done in code (instant, exact): 'play <search words>' (plays the "
                             "first real video), 'play the second video', pause, play, full screen, subtitles, "
                             "back/forward 30 seconds, next video, mute, faster.",

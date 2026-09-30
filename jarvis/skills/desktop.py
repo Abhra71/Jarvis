@@ -257,31 +257,80 @@ def _browser_tabs() -> list[tuple[int, str, object]]:
     return tabs
 
 
-def close_tab(name: str) -> str:
-    """Close the browser tab whose title matches `name`, in any browser window: it's clicked (so you see which
-    one) and closed with Ctrl+W. On 26 Sep "close the chess tab" closed whichever tab was in front."""
+def _matching_tabs(want: str) -> list[tuple[int, tuple]]:
+    return sorted(((fuzz.partial_ratio(want, t[1].lower()), t) for t in _browser_tabs()), key=lambda s: -s[0])
+
+
+def _close_one(hwnd, el, title: str, want: str) -> bool:
+    """Bring the tab to the front, press Ctrl+W, and check that very tab is gone. Ctrl+W is pressed only when
+    the browser window is really in front with that tab selected (30 Sep: a tab with no position on screen
+    made it click the screen's corner, and a close was counted before it happened)."""
+    _focus(hwnd)
+    if win32gui.GetForegroundWindow() != hwnd:
+        return False
+    UIA, _ = _uia()
     try:
-        tabs = _browser_tabs()
+        el.GetCurrentPattern(UIA.UIA_SelectionItemPatternId).QueryInterface(
+            UIA.IUIAutomationSelectionItemPattern).Select()
+    except Exception:
+        r = el.CurrentBoundingRectangle
+        if r.right - r.left < 4 or r.bottom - r.top < 4:
+            return False  # not on screen: never click a guess
+        w, h = jmouse.screen_size()
+        jmouse.click((r.left + r.right) / 2 / w * 1000, (r.top + r.bottom) / 2 / h * 1000)
+    time.sleep(0.15)
+    if win32gui.GetForegroundWindow() != hwnd or fuzz.partial_ratio(want, win32gui.GetWindowText(hwnd).lower()) < 75:
+        return False  # the tab didn't come to the front: Ctrl+W would close the wrong one
+    before = sum(1 for _, t, _ in _browser_tabs() if t == title)
+    keyboard.send_keys("^w")
+    deadline = time.monotonic() + 1.5
+    while time.monotonic() < deadline:
+        time.sleep(0.15)
+        try:
+            if sum(1 for _, t, _ in _browser_tabs() if t == title) < before:
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def close_tab(name: str, every: bool = False) -> str:
+    """Close the browser tab whose title matches `name` (or every matching tab), in any browser window, and
+    check it's gone. On 26 Sep "close the chess tab" closed whichever tab was in front; on 30 Sep "close all
+    YouTube tabs" was refused because two matched."""
+    want = name.lower().removesuffix(" tabs").removesuffix(" tab").strip()
+    try:
+        scored = _matching_tabs(want)
     except Exception:
         log.debug("Couldn't list tabs", exc_info=True)
         return "I couldn't read the browser's tabs."
-    if not tabs:
+    if not scored:
         return "No browser window is open."
-    want = name.lower().removesuffix(" tab").strip()
-    scored = sorted(((fuzz.partial_ratio(want, t[1].lower()), t) for t in tabs), key=lambda s: -s[0])
-    best_score, (hwnd, title, el) = scored[0]
+    best_score = scored[0][0]
     if best_score < 75:
         return f"I don't see a {want} tab."
-    close_matches = [t for s, t in scored if s >= best_score - 5]
-    if len(close_matches) > 1:
-        names = "; ".join(t[1][:40] for t in close_matches[:3])
-        return f"More than one tab matches {want}: {names}. Ask which one."
-    _focus(hwnd)
-    r = el.CurrentBoundingRectangle
-    w, h = jmouse.screen_size()
-    jmouse.click((r.left + r.right) / 2 / w * 1000, (r.top + r.bottom) / 2 / h * 1000)
-    keyboard.send_keys("^w")
-    time.sleep(STEP_PAUSE)
+    if not every:
+        close_matches = [t for s, t in scored if s >= best_score - 5]
+        if len(close_matches) > 1:
+            names = "; ".join(t[1][:40] for t in close_matches[:3])
+            return f"More than one tab matches {want}: {names}. Ask which one, or close all of them."
+    closed, failed = 0, 0
+    while failed < 2 and closed < 30:
+        hits = [t for s, t in _matching_tabs(want) if s >= 75]
+        if not hits or (closed and not every):
+            break
+        hwnd, title, el = hits[0]
+        if _close_one(hwnd, el, title, want):
+            closed += 1
+        else:
+            failed += 1
+    left = [t for s, t in _matching_tabs(want) if s >= 75]
+    plural = "s" if closed != 1 else ""
+    if left and (every or not closed):
+        done = f"I closed {closed} {want} tab{plural}, but " if closed else "I couldn't close it: "
+        return f"Not done: {done}{len(left)} still open."
+    if every:
+        return f"Closed {closed} {want} tab{plural}."
     return f"Closed the {want} tab."
 
 
