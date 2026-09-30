@@ -1,9 +1,13 @@
 """Windows, virtual desktops and Settings pages: all instant, all by Windows' own shortcuts or URIs."""
 
 import os
+import time
+
+import win32api
+import win32gui
 
 from . import ability
-from ..skills import keys
+from ..skills import desktop, elements, keys
 
 _THIS = r"(?:(?:this|the|current|my) )?(?:window|app|screen)?"
 
@@ -13,28 +17,93 @@ def _press(combo: str, reply: str) -> str:
     return reply
 
 
+# ---- checked window moves (30 Sep live test: "snap left" on a full-screen video did nothing, yet was reported
+# done, and Windows' Snap Assist picker was left open). Each move now checks where the window really went.
+
+def _front() -> int:
+    return win32gui.GetForegroundWindow()
+
+
+def _rect(hwnd) -> tuple[int, int, int, int]:
+    return win32gui.GetWindowRect(hwnd)
+
+
+def _work_area(hwnd) -> tuple[int, int, int, int]:
+    return win32api.GetMonitorInfo(win32api.MonitorFromWindow(hwnd, 2))["Work"]
+
+
+def _until(test, seconds: float = 1.2) -> bool:
+    deadline = time.monotonic() + seconds
+    while not test():
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.1)
+    return True
+
+
+def _leave_fullscreen():
+    """A video or browser in full screen ignores snapping: leave it first (Esc for a video, F11 for the browser)."""
+    if not elements.is_fullscreen():
+        return
+    keys.press("esc")
+    if not _until(lambda: not elements.is_fullscreen(), 0.8):
+        keys.press("f11")
+        _until(lambda: not elements.is_fullscreen(), 0.8)
+
+
+def _close_snap_assist():
+    """After a snap, Windows offers the other windows for the other half; the user didn't ask for that."""
+    time.sleep(0.25)
+    if any(title == "Snap Assist" for _, _, title in desktop._app_windows()):
+        keys.press("esc")
+
+
+def _on_half(hwnd, side: str) -> bool:
+    l, t, r, b = _rect(hwnd)
+    wl, wt, wr, wb = _work_area(hwnd)
+    mid, slack = (wl + wr) // 2, 40
+    if side == "left":
+        return abs(l - wl) <= slack and abs(r - mid) <= slack
+    return abs(l - mid) <= slack and abs(r - wr) <= slack
+
+
+def _snap(side: str) -> str:
+    _leave_fullscreen()
+    hwnd = _front()
+    keys.press(f"win+{side}")
+    ok = _until(lambda: _on_half(hwnd, side))
+    _close_snap_assist()
+    return f"Snapped {side}." if ok else f"Not done: the window didn't move to the {side} half."
+
+
 @ability("snap_left", "snap the front window to the left half",
          rf"snap {_THIS}\s*(?:to (?:the )?)?left", r"move (?:this|the) window (?:to the )?left( half)?")
 def snap_left():
-    return _press("win+left", "Snapped left.")
+    return _snap("left")
 
 
 @ability("snap_right", "snap the front window to the right half",
          rf"snap {_THIS}\s*(?:to (?:the )?)?right", r"move (?:this|the) window (?:to the )?right( half)?")
 def snap_right():
-    return _press("win+right", "Snapped right.")
+    return _snap("right")
 
 
 @ability("maximize_front", "maximize the front window",
          r"maximi[sz]e(?: (?:this|it|the window|this window|the screen|screen))?", r"make (?:it|this) (?:full|bigger)")
 def maximize_front():
-    return _press("win+up", "Maximised.")
+    hwnd = _front()
+    if win32gui.IsZoomed(hwnd):
+        return "It's already maximised."
+    keys.press("win+up")
+    return "Maximised." if _until(lambda: win32gui.IsZoomed(hwnd)) else "Not done: the window didn't maximise."
 
 
 @ability("minimize_front", "minimize the front window",
          r"minimi[sz]e(?: (?:this|it|the window|this window))?", r"hide (?:this|it)")
 def minimize_front():
-    return _press("win+down win+down", "Minimised.")
+    hwnd = _front()
+    keys.press("win+down win+down")
+    return "Minimised." if _until(lambda: win32gui.IsIconic(hwnd)) else "Not done: the window didn't minimise."
 
 
 @ability("other_screen", "move the front window to the other monitor",

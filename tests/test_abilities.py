@@ -8,6 +8,39 @@ from unittest import mock
 from jarvis import abilities
 
 
+def fake_window():
+    """A pretend front window that really moves when Win+Left/Right is pressed (never the real screen)."""
+    w = abilities.windows
+    state = {"rect": (100, 100, 900, 700)}
+
+    def press(combo):
+        if combo == "win+left":
+            state["rect"] = (0, 0, 960, 1020)
+        elif combo == "win+right":
+            state["rect"] = (960, 0, 1920, 1020)
+
+    press_mock = mock.Mock(side_effect=press)
+    patches = [mock.patch.object(w.keys, "press", press_mock), mock.patch.object(w, "_front", return_value=1),
+               mock.patch.object(w, "_rect", side_effect=lambda h: state["rect"]),
+               mock.patch.object(w, "_work_area", return_value=(0, 0, 1920, 1020)),
+               mock.patch.object(w.elements, "is_fullscreen", return_value=False),
+               mock.patch.object(w.desktop, "_app_windows", return_value=[]),
+               mock.patch.object(w.time, "sleep")]
+    return patches, press_mock
+
+
+class _FakeWindow:
+    def __enter__(self):
+        self.patches, press = fake_window()
+        for p in self.patches:
+            p.start()
+        return press
+
+    def __exit__(self, *exc):
+        for p in self.patches:
+            p.stop()
+
+
 class MatchTest(unittest.TestCase):
     def _hit(self, said):
         hit = abilities.match(said)
@@ -32,7 +65,7 @@ class MatchTest(unittest.TestCase):
             self.assertEqual(self._hit(said), want, said)
 
     def test_running_uses_windows_shortcuts_and_uris(self):
-        with mock.patch.object(abilities.windows.keys, "press") as press:
+        with _FakeWindow() as press:
             self.assertEqual(abilities.handle("snap left"), "Snapped left.")
         press.assert_called_once_with("win+left")
         with mock.patch.object(abilities.windows.os, "startfile") as start:
@@ -40,6 +73,11 @@ class MatchTest(unittest.TestCase):
             start.assert_called_once_with("ms-settings:nightlight")
         with mock.patch.object(abilities.windows.os, "startfile"):
             self.assertIn("no Settings page", abilities.run("open_settings", "banana"))
+
+    def test_snapping_is_checked(self):
+        with _FakeWindow() as press:
+            press.side_effect = None  # the window doesn't move (30 Sep: a full-screen video ignored the snap)
+            self.assertEqual(abilities.run("snap_right"), "Not done: the window didn't move to the right half.")
 
     def test_catalog_for_the_ai_is_short(self):
         self.assertLess(len(abilities.catalog_text()), 200)
@@ -58,7 +96,7 @@ class PhraseMemoryTest(unittest.TestCase):
     def test_learned_phrases_are_instant_next_time(self):
         self.assertIsNone(abilities.handle("put this on the left side"))
         self.mem.learn("put this on the left side", "snap_left", None)
-        with mock.patch.object(abilities.windows.keys, "press") as press:
+        with _FakeWindow() as press:
             self.assertEqual(abilities.handle("Put this on the left side."), "Snapped left.")
         press.assert_called_once_with("win+left")
         # it survives a restart
