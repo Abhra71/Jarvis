@@ -9,6 +9,12 @@ import win32gui
 from . import ability
 from ..skills import desktop, elements, keys
 
+
+def _is_zoomed(hwnd) -> bool:
+    """Is the window maximized? (pywin32 has no IsZoomed: 30 Sep, every "maximize" crashed on it.)"""
+    import ctypes
+    return bool(ctypes.windll.user32.IsZoomed(hwnd))
+
 _THIS = r"(?:(?:this|the|current|my) )?(?:window|app|screen)?"
 
 
@@ -106,10 +112,10 @@ def snap_right():
          r"maximi[sz]e(?: (?:this|it|the window|this window|the screen|screen))?", r"make (?:it|this) (?:full|bigger)")
 def maximize_front():
     hwnd = _front()
-    if win32gui.IsZoomed(hwnd):
+    if _is_zoomed(hwnd):
         return "It's already maximised."
     keys.press("win+up")
-    return "Maximised." if _until(lambda: win32gui.IsZoomed(hwnd)) else "Not done: the window didn't maximise."
+    return "Maximised." if _until(lambda: _is_zoomed(hwnd)) else "Not done: the window didn't maximise."
 
 
 @ability("minimize_front", "minimize the front window",

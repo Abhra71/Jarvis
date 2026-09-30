@@ -165,6 +165,32 @@ class Editor:
             keys.press("end")
         return "ok"
 
+    def move_into(self, name: str) -> str:
+        """Put the cursor inside a method/function/loop ("move the cursor inside the main method"): at the end of
+        the line with its opening brace, so the next code goes on the line below, inside it."""
+        text = self.text()
+        if text is not None:  # BlueJ: find it in the code
+            lines = text.split("\n")
+            pat = re.compile(rf"\b{re.escape(name)}\s*\(" if name not in ("for", "while", "if") else rf"\b{name}\s*\(")
+            for i, ln in enumerate(lines):
+                if pat.search(ln):
+                    for j in range(i, min(i + 3, len(lines))):
+                        if "{" in lines[j]:
+                            self.go_to_line(j + 1)
+                            keys.press("end")
+                            return "ok"
+            return f"Not done: there's no {name} in this code."
+        # VS Code: its own find box, then to the end of that line
+        keys.press("ctrl+f")
+        time.sleep(0.3)
+        keys.press("ctrl+a")
+        desktop.type_text(f"{name}(")
+        keys.press("enter")
+        time.sleep(0.2)
+        keys.press("escape")
+        keys.press("end")
+        return "ok"
+
     def exit_block(self) -> str:
         """Put the cursor after the closing brace of the block it's in ("come out of the loop")."""
         here = self.line().rstrip("\r\n")

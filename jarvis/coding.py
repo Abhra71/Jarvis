@@ -134,7 +134,8 @@ def translate(said: str, lang: str, code: str | None = None, names: set[str] | N
     `names`: variables known from this session (VS Code doesn't show Jarvis its code)."""
     original = said.strip().rstrip(".")
     s = " ".join(re.sub(r"[,;:!?]", " ", original.lower()).split())
-    s = s.replace("system dot out dot", "system out").replace("system.out.", "system out ")
+    s = re.sub(r"\bsystem(?:\W+|\s+dot\s+)out(?:\W+|\s+dot\s+)", "system out ", s)  # "System. out. print", "system dot out dot"
+    s = " ".join(s.replace(".", " ").split()) if not re.search(r"\d\.\d", s) else s
     known = identifiers(code) | (names or set())
     java = lang == "java"
 
@@ -239,7 +240,15 @@ def translate(said: str, lang: str, code: str | None = None, names: set[str] | N
     m = re.fullmatch(r"(?:add a |write a )?comment(?: saying| that says)? (.+)", s)
     if m:
         return f"// {_original_case(original, m.group(1))}"
-    if re.fullmatch(r"(?:the |a )?main (?:method|function)", s):
+    m = re.fullmatch(r"(?:initiali[sz]e|declare|create|make)(?: a| an| the)?(?: new)?(?: variable| integer| int| counter)?"
+                     r"(?: called| named)? (?P<n>[a-z]\w*)(?: (?:to|equal to|equals|is equal to|=|as|with|with value) "
+                     r"(?P<v>.+))?", s)
+    if m and m.group("n") not in _TYPES and m.group("n") not in ("a", "an", "the", "method", "function", "class",
+                                                                  "loop", "array", "program"):
+        value = expression(m.group("v"), known) if m.group("v") else "0"
+        return f"{m.group('n')} = {value};" if m.group("n") in known else f"int {m.group('n')} = {value};"
+    if re.fullmatch(r"(?:write |add |create |make )?(?:a |the )?(?:(?:public )?(?:static )?void main(?: string args)?|"
+                    r"main (?:method|function))(?: method| function)?", s):
         if java:
             return f"public static void main(String[] args)\n{{\n    {CURSOR}\n}}"
         return f"int main() {{\n    {CURSOR}\n    return 0;\n}}"
@@ -250,6 +259,10 @@ def translate(said: str, lang: str, code: str | None = None, names: set[str] | N
 
 AI_SYSTEM = """You turn one spoken coding instruction into {language} code for a student's editor.
 Answer in JSON: {{"code": "<the code>"}}. The code only: no explanation, no markdown fences.
+If it is NOT clearly an instruction to write code (a command like "select all" or "move the cursor", a question,
+a single unclear word, or speech that doesn't make sense), answer {{"code": ""}}. Never guess.
+Write only the snippet asked for, to be put at the cursor: never wrap it in a class or in main, and never write a
+class unless the instruction says to create a class. Never repeat code that is already in their file.
 Follow the student's style: {style}
 Use the names already in their code where they fit: {names}.{static}
 Write the COMPLETE code that was asked for (a whole method, a whole loop with its body…), laid out properly:
@@ -286,6 +299,12 @@ def ask_ai(said: str, lang: str, code: str | None, think) -> str | None:
         except ValueError:
             pass
     if not out or len(out) > 1500:
+        return None
+    if re.search(r"\bclass\s+\w+", out) and "class" not in said.lower():
+        log.warning("Coding AI wrote a class nobody asked for; not typing it: %r", out[:120])
+        return None
+    if code and all(ln.strip() in code for ln in out.split("\n") if ln.strip() and ln.strip() not in "{}"):
+        log.warning("Coding AI repeated code already in the file; not typing it")
         return None
     if out.count("{") != out.count("}") or out.count("(") != out.count(")"):
         log.warning("Coding AI's answer isn't balanced; not typing it: %r", out[:200])

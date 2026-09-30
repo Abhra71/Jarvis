@@ -220,3 +220,21 @@ class GamesTest(unittest.TestCase):
                 mock.patch.object(games.win32gui, "PostMessage") as post:
             self.assertEqual(games.close_game("the game"), "Closed eFootball.")
         post.assert_called_once_with(1, games.win32con.WM_CLOSE, 0, 0)
+
+
+class Win32CallsExistTest(unittest.TestCase):
+    """30 Sep: win32gui.IsZoomed doesn't exist, and every "maximize" crashed on it; tests mocked it away."""
+
+    def test_every_win32_call_in_the_code_exists(self):
+        import re
+        from pathlib import Path
+        import win32api
+        import win32con
+        import win32gui
+        root = Path(__file__).resolve().parents[1] / "jarvis"
+        missing = []
+        for f in root.rglob("*.py"):
+            s = f.read_text(encoding="utf-8")
+            for mod, obj in (("win32gui", win32gui), ("win32api", win32api), ("win32con", win32con)):
+                missing += [f"{f.name}: {mod}.{n}" for n in set(re.findall(rf"\b{mod}\.(\w+)", s)) if not hasattr(obj, n)]
+        self.assertEqual(missing, [])
