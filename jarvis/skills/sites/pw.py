@@ -29,6 +29,9 @@ SUBJECTS = ("physics", "chemistry", "maths", "biology", "history", "civics", "ge
 _ALIASES = {"math": "maths", "mathematics": "maths", "bio": "biology", "geo": "geography", "eco": "economics",
             "computers": "computer", "computer science": "computer", "chem": "chemistry"}
 _PERCENT = re.compile(r"^(\d{1,3})\s?%$")
+# The user's usual teacher per subject when a subject is there twice (30 Sep: "normally I study chemistry from the
+# same teacher", Sunil Sir; he's also the one with progress in the batch). "chemistry by sanya" still opens hers.
+TEACHERS = {"chemistry": "sunil"}
 
 
 def subject_in(text: str) -> str | None:
@@ -216,7 +219,10 @@ def open_subject(subject: str) -> str:
         cards = [c for c in cards if teacher in c[0].lower()] or cards
     if not cards:
         return f"Not done: there's no {base.capitalize()} in your batch's subjects."
-    cards.sort(key=lambda c: -c[2])  # the one being studied
+    cards.sort(key=lambda c: -c[2])  # the one being studied (its progress %)
+    usual = TEACHERS.get(base)
+    if " by " not in subject and usual:  # the user's usual teacher first (30 Sep: a narrow window hid the %)
+        cards.sort(key=lambda c: usual not in c[0].lower())
     name, rect, pct = cards[0]
     before = desktop.current_url()
     _click_at(rect)

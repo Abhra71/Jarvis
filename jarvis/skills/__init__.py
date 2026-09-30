@@ -130,6 +130,8 @@ def action_budget(request: str, open_ended: int = OPEN_ENDED_ACTIONS) -> int:
     "Click No thanks" = 1, "move e2 to e4" = 1, "type hello" = 2 (focus the field, then type),
     anything open-ended = `open_ended` per part. "X and Y" adds the parts up.
     """
+    if _LOOK_ONLY.match(" ".join((request or "").lower().split())):
+        return 0  # a question about the screen: look, never click (30 Sep: "what's on my screen" opened Khazana)
     total = 0
     for part in request_parts(request):
         if _REPEATS.search(part):
@@ -141,6 +143,11 @@ def action_budget(request: str, open_ended: int = OPEN_ENDED_ACTIONS) -> int:
         else:
             total += open_ended
     return max(total, 1)
+
+
+# Questions that only need eyes: no clicks, typing or keys for these.
+_LOOK_ONLY = re.compile(r"(what'?s|what is|what are|whats|which|who|describe|tell me what|how many|is there|are there|"
+                        r"can you see|do you see)\b.*\b(screen|showing|open|window|page|tab|this|here|there|see)\b")
 
 
 _COORDS = {"x", "y", "x2", "y2"}
@@ -436,6 +443,9 @@ class Skills:
             # a YouTube window landed on Gmail (YouTube had opened behind it), and "1,2,4" became 3 blind clicks.
             log.info("Blocked click(%s): no fresh screenshot", args)
             return "Not clicked: look_at_screen first. The screen may have changed since the last look."
+        if name == "do" and self.budget == 0 and self.launches == 0:
+            log.info("Blocked do(%s): a look-only question", args)
+            return "Not done: this is only a question; look and answer, don't act."
         if name in _HANDS and self.budget is not None:
             if self.budget <= 0:
                 log.info("Blocked %s(%s): more actions than the user asked for", name, args)

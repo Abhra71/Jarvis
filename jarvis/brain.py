@@ -143,6 +143,9 @@ _FINISHING_TOOLS = {
 }
 _MULTI_STEP = re.compile(r"\b(and|then|after that|also|once)\b|,")
 _LAUNCHING_TOOLS = {"open_app", "open_website", "open_chrome", "open_path", "web_search", "show_in_explorer"}
+# Follow-ups that DO mean the earlier request ("yes" to a question, "try again", "continue").
+_CONTINUES = re.compile(r"^\s*(yes|yeah|yep|sure|ok|okay|go ahead|do it|try again|again|retry|continue|go on|"
+                        r"carry on|keep going|same|finish it|and then|then)\b", re.I)
 _PLAY = re.compile(r"\b(play|listen to|put on|watch)\b", re.I)
 _CLICKS = {"click", "click_pair", "type_text", "press_key"}
 _QUESTION = re.compile(r"\?\s*$|^\s*(what|who|when|where|which|why|how|is|are|was|were|did|does|do|can|tell me)\b",
@@ -417,7 +420,7 @@ class Brain:
             volume.mute(False)
         # Hands-on actions (clicks, typing…) are capped at what was asked; enforced in Skills.call.
         self.skills.budget = action_budget(text, self.cfg.get("open_ended_actions", 3))
-        self.skills.launches = max(1, len(request_parts(text)))
+        self.skills.launches = max(1, len(request_parts(text))) if self.skills.budget else 0  # a question opens nothing
         self.kind, self.request, self.extra_groups = router.classify(text), text, set()
         log.info("Request kind: %s", self.kind)
         said = text  # the words alone: the agent is told about shaky speech separately
@@ -446,6 +449,10 @@ class Brain:
                     self.kind, self.screen_items = "screen", items
                     log.info("%r is on screen: handling it as a screen request", router.thing_named(text))
             self.turn_calls = []  # the up-front screen read above doesn't count
+            if self.history and not self.skills.confirmed and not _CONTINUES.match(said):
+                # 30 Sep: "what's on my screen" came back as "Opened Chemistry Khazana": the model carried on an
+                # earlier, unfinished request from the conversation.
+                text += "\n(Do only this request. Earlier requests in this conversation are finished; never continue them.)"
             reply = self._ask_any(text)
             if self.agent:
                 self.agent.heard(text, reply)

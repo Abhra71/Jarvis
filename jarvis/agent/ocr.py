@@ -30,6 +30,7 @@ READ_TIMEOUT = 6.0
 # "app <tab> status" per media session). Each answer ends with "<<END>>".
 _SCRIPT = r"""
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8  # "™" etc. (30 Sep: a byte 0x99 broke a read)
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]
 $null = [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime]
@@ -92,7 +93,7 @@ class _Worker:
         self.proc = subprocess.Popen(
             ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", self.script],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
-            encoding="utf-8", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            encoding="utf-8", errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if self._wait_for("<<READY>>", 15) is None:
             self.stop()
             raise RuntimeError("the Windows OCR helper didn't start")
