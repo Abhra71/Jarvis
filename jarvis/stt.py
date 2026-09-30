@@ -37,6 +37,11 @@ def clean_transcript(text: str) -> str:
     """Whisper sometimes "hears" a phrase over and over in noise, often one from its own hint
     ("Open Chrome. Open Chrome. Open Chrome. Open Chrome." on 26 Sep, when nobody said it).
     Three or more of the same sentence = noise, not speech. A doubled sentence is kept once."""
+    words = re.findall(r"[A-Za-z0-9]+", text)
+    if len(words) >= 8 and sum(len(w) <= 2 for w in words) >= 0.6 * len(words):
+        # 30 Sep: "Tmf, E. I. P, M1, Tmf, E. I. P. S, P, Mp…" (noise) was sent to the AI as a request.
+        log.info("Ignoring %r: a string of letters is noise, not speech", text[:80])
+        return ""
     sentences = [s.strip() for s in _SENTENCE.findall(text) if s.strip()]
     keys = [s.lower().strip(" .!?,") for s in sentences]
     if len(keys) >= 3 and len(set(keys)) == 1:

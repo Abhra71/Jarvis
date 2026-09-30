@@ -23,6 +23,7 @@ log = logging.getLogger(__name__)
 
 # How long a check may take to come true: apps and pages need a moment to appear.
 WAIT_LAUNCH = 5.0
+WAIT_APP = 9.0    # a desktop app (Claude, Electron apps) can take 6-8 s to show its window (30 Sep log)
 WAIT_STEP = 1.5
 POLL = 0.25
 SETTLE = 0.6      # before a look_again: let the page finish changing
@@ -275,6 +276,19 @@ class Agent:
                     out.steps, out.result, out.detail = len(executed), "asked", f"pop-up: {form.group(1)}"
                     return (f"There's a pop-up over the page: the {form.group(1)}. Shall I close it, "
                             "or do you want to fill it in?")
+                meant = re.search(r"Did you mean (.+?)\?$", result) if step.tool == "open_app" else None
+                if meant:
+                    # A misheard app name ("Clawed"): ask, and a yes opens the real one. Never improvise a web
+                    # search instead (30 Sep: it searched Google for a game and clicked a Steam link).
+                    fixed = Step("open_app", {"name": meant.group(1)}, step.check, step.say)
+                    self.pending = Pending(request, [fixed] + steps[i + 1:], reply)
+                    out.steps, out.result, out.detail = len(executed), "asked", result
+                    return f"I couldn't find {step.args.get('name')}. Did you mean {meant.group(1)}?"
+                opened = re.match(r"Opening (.+?)\.$", result) if step.tool == "open_app" else None
+                if opened and check is not None and check.kind in ("window", "open") and not check.negate:
+                    # Check for the app that really opened, not the (maybe misheard) name asked for.
+                    check = checks.Check(check.kind, opened.group(1))
+                    already = checks.proves_nothing(check, before)
                 if looks_failed(result):
                     why = result
                 else:
@@ -442,7 +456,12 @@ class Agent:
         if already:
             # Already true before the step: it can't show the step did anything.
             return None, step.tool not in _UNCHECKABLE
-        wait = WAIT_LAUNCH if step.tool in LAUNCHES or step.tool in ("web_search", "address_bar", "site_search")             else WAIT_STEP
+        if step.tool == "open_app":
+            wait = WAIT_APP
+        elif step.tool in LAUNCHES or step.tool in ("web_search", "address_bar", "site_search"):
+            wait = WAIT_LAUNCH
+        else:
+            wait = WAIT_STEP
         deadline = self.clock() + wait
         while True:
             snap = self._snap()

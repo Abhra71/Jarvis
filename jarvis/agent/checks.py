@@ -201,6 +201,8 @@ def auto_check(tool: str, args: dict, check: Check | None, before: Snapshot) -> 
         return None
     if check is None or too_vague(check):
         return None
+    if tool == "web_search" and check.kind == "url" and "search" not in check.value.lower():
+        return None  # a guessed site (30 Sep: "www.clawedgame.com" after a Google search): proves nothing
     if tool == "click_element" and check.kind == "element" and not check.negate \
             and _norm(check.value) == _norm(args.get("name", "")):
         return None  # "click Cancel, expect Cancel" (29 Sep): the thing clicked isn't the result
