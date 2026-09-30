@@ -75,6 +75,22 @@ def _form_in_way() -> str:
     return p.title if p and not popups.is_notice(p.title) else ""
 
 
+def _forms_first(fn):
+    """A pop-up form can appear a moment after a PW page loads, over what was about to be clicked (30 Sep). When a
+    step fails and a form is the reason, say so: the agent then asks the user "close it, or fill it in?"."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        result = fn(*args, **kwargs)
+        if isinstance(result, str) and result.startswith("Not done") and "is over the page" not in result:
+            form = _form_in_way()
+            if form:
+                return f"Not done: the {form} is over the page. Shall I close it, or do you want to fill it in?"
+        return result
+    return wrapper
+
+
 def _click_at(rect):
     l, t, r, b = rect
     sw, sh = jmouse.screen_size()
@@ -102,6 +118,7 @@ def _find_steady(want: str, timeout: float = 4.0) -> tuple | None:
         time.sleep(0.3)
 
 
+@_forms_first
 def open_study() -> str:
     """Your batch's page, in the PW tab if there is one (it's logged in there), else in the browser in front."""
     if not _on_pw():
@@ -179,6 +196,7 @@ def _subject_cards(lines) -> list[tuple[str, tuple, int]]:
     return cards
 
 
+@_forms_first
 def open_subject(subject: str) -> str:
     subject = " ".join(subject.lower().split())
     why = _all_classes()
@@ -269,6 +287,7 @@ def _label_matches(label: str, subject: str, year: str) -> bool:
     return bool(words) and words[0][:4] == subject[:4] and (not year or year in label)
 
 
+@_forms_first
 def open_khazana(request: str = "") -> str:
     """'khazana' / 'khazana chemistry' / 'khazana chemistry 2026' / 'khazana sunil sir organic chemistry'."""
     why = _khazana_home()

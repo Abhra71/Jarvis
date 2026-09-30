@@ -267,6 +267,14 @@ class Agent:
                     ready = results[-1] + " " if results and executed[-1].tool == "do" \
                         and not looks_failed(results[-1]) else ""  # an ability's summary, not "Typed it."
                     return ready + _ask_for_yes(result)
+                form = re.match(r"Not done: the (.+?) is over the page", result)
+                if form:
+                    # A pop-up form showed up while the step ran (30 Sep: PW's feedback form after the page
+                    # loaded): the user's call, then carry on from this step.
+                    self.question = Question(request, steps[i:], reply, form.group(1), self.clock())
+                    out.steps, out.result, out.detail = len(executed), "asked", f"pop-up: {form.group(1)}"
+                    return (f"There's a pop-up over the page: the {form.group(1)}. Shall I close it, "
+                            "or do you want to fill it in?")
                 if looks_failed(result):
                     why = result
                 else:
