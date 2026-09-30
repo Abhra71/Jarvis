@@ -95,7 +95,7 @@ def open_class(value: str):
 
 
 @ability("code_open_file", "VS Code: open a file of the project by name",
-         r"open (?:the )?file (?!called |named )(?P<value>[\w .-]+?)(?: in (?:vs )?code)?", value="name")
+         r"open (?:the )?file (?!called |named |explorer|manager|with |of )(?P<value>[\w .-]+?)(?: in (?:vs )?code)?", value="name")
 def open_file(value: str):
     if not desktop.front_window().lower().startswith("code:"):
         raise ValueError("VS Code isn't in front")

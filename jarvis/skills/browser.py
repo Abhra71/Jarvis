@@ -33,6 +33,7 @@ SITES = {
     "twitter": "https://x.com",
     "linkedin": "https://www.linkedin.com",
     "amazon": "https://www.amazon.in",
+    "flipkart": "https://www.flipkart.com",
     "whatsapp web": "https://web.whatsapp.com",
     "google maps": "https://maps.google.com",
     "maps": "https://maps.google.com",

@@ -154,9 +154,11 @@ _WINDOW_VERBS = {("snap", "left"): "snap_left", ("snap", "right"): "snap_right",
                  ("maximize", ""): "maximize_front", ("maximise", ""): "maximize_front",
                  ("minimize", ""): "minimize_front", ("minimise", ""): "minimize_front"}
 _NOT_APPS = {"it", "this", "that", "this window", "the window", "window", "screen", "the screen", "this app",
-             "left", "right", "it to", "this to"}
+             "left", "right", "it to", "this to", "browser", "all", "everything", "all windows", "them"}
 
 
+_CLOSE_THIS = re.compile(r"close (?:this|it|this one|this 1|that|this page|the page|this tab|the current (?:one|tab|page))")
+_BROWSER_APPS = {"chrome", "msedge", "brave", "firefox", "opera"}
 _PW = re.compile(r"\b(pw|physics wallah)\b")
 _NOT_PW = re.compile(r"\b(youtube|google|search|video|videos)\b")
 
@@ -201,7 +203,18 @@ def code_plan(text: str, front: str = "", unsure: bool = False) -> Plan | None:
         return Plan(mail_steps, source="code")
     parts = request_parts(text)
     if len(parts) < 2:
-        return None  # one part: the site packs and abilities.handle already had their chance before the AI
+        # One part: the site packs and abilities.handle already had their chance, except a window move with an
+        # app's name ("maximize Claude", 1 Oct replay: it went to the AI).
+        m = _APP_WINDOW.fullmatch(parts[0]) if parts else None
+        ability_name = m and _WINDOW_VERBS.get((m.group("verb"), m.group("side") or ""))
+        if ability_name and m.group("app") not in _NOT_APPS and not m.group("app").startswith(("it ", "this ")):
+            return Plan(_expand(Step("do", {"ability": ability_name, "value": m.group("app")})), source="code")
+        browser, _, title = (front or "").partition(": ")
+        if parts and _CLOSE_THIS.fullmatch(parts[0]) and browser.lower() in _BROWSER_APPS and title:
+            # "Close this." in a browser = the tab (1 Oct replay: the AI closed the whole Chrome window).
+            return Plan([Step("browser", {"action": "close_tab"}, checks.Check("window", title, True))],
+                        source="code")
+        return None
     on_youtube = "youtube" in normalize(text) or youtube.is_front(front)
     steps = []
     last_verb = ""
@@ -369,6 +382,8 @@ Rules:
 - To type into a box: focus it first (its shortcut, or click_element on the field), then type_text.
 - "expect" = how to SEE that the step worked: something that changes because of it. "window: X" (front app/title), "open: X", "closed: X", "element: X" (a named item that appears), "not element: X" (one that goes away, e.g. a dialog's button after clicking it), "text: X", "focus: field", "url: X", "playing", "paused", "fullscreen", "not fullscreen", "not dialog". Never the item you just clicked, never a label you guess. "" when nothing visible changes (volume, timers, files); Jarvis then says it couldn't confirm.
 - Do only what was asked. "It"/"that" = the recent context below.
+- "Close this/it/this one" with a browser in front = the current TAB (press_key ctrl+w), never the whole window.
+- Never guess a website from one unclear or odd word ("Playbots."): ask what they meant.
 - "reply": the result in the user's words ("Playing it in full screen."), only what the steps really do.
 - "say" only on a slow first step the user will notice, 2-4 words ("Opening WhatsApp").
 - Sending, posting, buying, deleting: include that step; Jarvis itself asks the user before doing it.

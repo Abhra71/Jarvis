@@ -56,12 +56,20 @@ _DURATION = re.compile(r"(\d+)\s*(hours?|hrs?|minutes?|mins?|seconds?|secs?)\b")
 _UNIT_SECONDS = {"h": 3600, "m": 60, "s": 1}
 
 
+# Names speech recognition got wrong in real sessions (the replay of every sentence, 1 Oct).
+_MISHEARD = [(re.compile(r"\bphysics (?:voila|wala|walla|wallah s|wallahs|vala|valla)\b"), "physics wallah"),
+             (re.compile(r"\b(?:kazana|khazanah|kazhana|khajana|kajana)\b"), "khazana"),
+             (re.compile(r"\b(?:e|d|the) football\b"), "efootball")]
+
+
 def normalize(text: str) -> str:
     text = text.lower().replace("%", " percent")
     text = re.sub(r"[^\w\s]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     text = re.sub(r"\bdot (com|org|net|in|io|live|co|ai|dev)\b", r"\1", text)  # "chess dot com" -> "chess com"
     text = re.sub(r"\byou tube\b", "youtube", text)
+    for heard, meant in _MISHEARD:
+        text = heard.sub(meant, text)
     text = words_to_digits(text)
     text = _FILLER.sub("", text)
     text = re.sub(r"\s*\bplease$", "", text)

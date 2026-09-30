@@ -15,7 +15,7 @@ from .skills import volume
 from .brain import Brain, BrainUnavailable
 from . import abilities
 from . import coding
-from .skills import Skills, desktop, editors, elements, keys, site_url, sites
+from .skills import Skills, desktop, editors, elements, keys, request_parts, site_url, sites
 from .stt import Transcriber
 from .tts import Speaker
 from .usage import usage
@@ -142,6 +142,9 @@ class Assistant:
         """Simple, clear commands run instantly offline; anything fancier goes to Gemini."""
         if intent.name == "web_search":
             return False  # "search it here", "…in the address bar": the AI handles context far better
+        if len(request_parts(text)) > 1:
+            # 30 Sep: "open YouTube in Brave's browser, mute in Chrome" only muted. Several parts: the agent.
+            return False
         if intent.name == "shortcut":
             # Only real keys, and nothing that needs a yes (Enter in a chat sends it): the AI asks those.
             try:
