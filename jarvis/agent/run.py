@@ -14,7 +14,7 @@ from typing import Callable
 
 from ..config import ROOT
 from ..skills import LAUNCHES, popups, request_parts, shortcuts
-from . import checks
+from . import checks, speech
 from .context import Memory, Readers, take
 from .plan import (LOOK_AGAIN, NeedsEyes, Plan, PlanError, PlanMemory, Step, code_plan, continue_prompt, parse, site_hints,
                    planning_prompt, repair_prompt)
@@ -331,8 +331,7 @@ class Agent:
             # Done, but not seen to work: say what was done, not what the plan hoped for (29 Sep: "Video resumed
             # in fullscreen" was said after two unchecked key presses, and neither had worked).
             out.result, out.detail = "unconfirmed", "; ".join(unconfirmed)
-            said = " ".join(r if r.endswith((".", "!", "?")) else r + "." for r in unconfirmed[-2:])
-            return f"{said} I couldn't confirm it worked on screen."
+            return speech.unconfirmed(unconfirmed)
         out.result = "done"
         if remember and not unsure and last_seen and plan.source != "code" and (plan.source == "ai" or repaired):
             self.memory.learn(request, executed, reply)
@@ -407,7 +406,7 @@ class Agent:
             return None
         result = self._close_popup()
         if looks_failed(result):
-            return f"I couldn't close it: {self._spoken(result)}"
+            return f"I couldn't close it. {speech.problem(result)}"
         if _ALWAYS.search(text):
             self.popup_prefs[q.popup] = "close"
             self._save_popup_prefs()
@@ -473,13 +472,7 @@ class Agent:
 
     def _stuck(self, out: Outcome, executed: list, why: str, extra: str = "") -> str:
         out.steps, out.result, out.detail = len(executed), "stuck", why + (f" / {extra}" if extra else "")
-        return f"I'm stuck: {self._spoken(why)} What should I do?"
-
-    @staticmethod
-    def _spoken(why: str) -> str:
-        why = re.sub(r"^(Not done|Not clicked|Not allowed|Error):\s*", "", why.strip())
-        why = why.split(" Current items:")[0]  # never read out a whole list of screen items
-        return why if why.endswith((".", "?", "!")) else why + "."
+        return speech.stuck(why)
 
     def _note_object(self, step: Step):
         for key in _ARG_OBJECTS:

@@ -31,7 +31,7 @@ ROUND = [
     ("PW batch chemistry", "Open Physics Wallah, my batch, chemistry", 1),
     ("Khazana chemistry", "Open Khazana chemistry", 1),
 ]
-FAILED = ("not done", "i'm stuck", "couldn't confirm", "i couldn't", "sorry", "didn't work", "not clicked")
+FAILED = ("not done", "i'm stuck", "couldn't confirm", "what should i do", "can't tell if it worked", "i couldn't", "sorry", "didn't work", "not clicked")
 
 
 def main():

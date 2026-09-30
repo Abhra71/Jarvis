@@ -270,7 +270,7 @@ class AgentTest(unittest.TestCase):
         self.assertTrue(agent.has_pending())
         desk.confirmed = True  # the user said yes (brain sets Skills.confirmed)
         # Enter can't be checked yet (the WhatsApp ability will): said honestly, not "Sent your message".
-        self.assertEqual(agent.resume(), "Pressed enter. I couldn't confirm it worked on screen.")
+        self.assertEqual(agent.resume(), "I pressed Enter, but I can't tell if it worked.")
         self.assertEqual(desk.calls[-1], ("press_key", {"key": "enter"}))
         self.assertFalse(agent.has_pending())
         self.assertEqual(agent.memory.plans, {})  # plans that send are never replayed without thinking
@@ -301,7 +301,7 @@ class AgentTest(unittest.TestCase):
         step = {"steps": [{"do": "open_app", "args": {"name": "whatsapp"}, "expect": "window: WhatsApp"}]}
         agent, think = _agent(desk, [step, step], self.tmp.name)
         reply = agent.run("open whatsapp and show my chats")
-        self.assertEqual(reply, "I'm stuck: WhatsApp isn't in front; chrome is. What should I do?")
+        self.assertEqual(reply, "WhatsApp didn't come up; Chrome is in front. What should I do?")
         self.assertEqual((agent.last.result, think.call_count), ("stuck", 2))
 
     def test_a_failing_tool_is_not_waited_on(self):
@@ -436,7 +436,7 @@ class HonestyTest(unittest.TestCase):
         self.desk.effects["press_key"] = lambda a: "Pressed f5."
         plan = {"steps": [{"do": "press_key", "args": {"key": "f5"}}], "reply": "Refreshed the page."}
         agent, _ = _agent(self.desk, [plan], self.tmp.name)
-        self.assertEqual(agent.run("refresh"), "Pressed f5. I couldn't confirm it worked on screen.")
+        self.assertEqual(agent.run("refresh"), "I pressed F5, but I can't tell if it worked.")
         self.assertEqual(agent.last.result, "unconfirmed")
 
     def test_clicked_item_is_not_its_own_proof(self):
@@ -459,7 +459,7 @@ class HonestyTest(unittest.TestCase):
         step = {"do": "click_element", "args": {"name": "Google Chrome"}, "expect": "window: chrome"}
         agent, _ = _agent(self.desk, [{"steps": [step]}, {"steps": [step]}], self.tmp.name)
         reply = agent.run("reopen chrome")
-        self.assertTrue(reply.startswith("I'm stuck"))
+        self.assertTrue(reply.endswith("What should I do?"))
         self.assertEqual(len(self.desk.calls), 1)
 
     def test_parse_media_checks(self):
