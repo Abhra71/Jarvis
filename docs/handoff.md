@@ -8,11 +8,39 @@ Run the **whole PC by voice**: sit back and do ~99% of computer work reliably, f
 - AI is a **luxury** (free Groq + Gemini only). Everyday work runs in code.
 - Never: deleting, secret files (`.env`, keys), typing into VMware/Kali, sending or buying without a spoken yes.
 
-## Where we are (30 Sep, evening)
-- Honest score: agent ~60%, **the dream overall ~57%**. Phase 1 done; Phase 2 mostly (the 10x run is
-  `tools/reliability.py`); Phase 3 nearly done.
-- ~210 tests pass: `.venv\Scripts\python -m unittest discover tests`. Everything is committed and pushed to `main`.
+## Where we are (1 Oct)
+- Honest score: agent ~64%, **the dream overall ~60%**, but **daily-use feel ~30-35%** (the user: "I still won't
+  use it as an app"). What's missing is trust: fewer confident wrong actions, human replies, speed on failures.
+- ~250 tests pass: `.venv\Scripts\python -m unittest discover tests`. Everything is committed and pushed to `main`.
 - Commit only when the tests pass (a failed run once got committed: check the last line says OK).
+
+## Background batch (1 Oct, no screen used; all committed)
+- Misheard app names: sound-alike match asks "Did you mean Claude?" (a yes opens it and is remembered); apps are
+  checked by the name that really opened, 9 s to appear; letter-soup transcripts ignored (spellings kept).
+- Speech (`agent/speech.py`): failures said like a person ("Chrome didn't close. What should I do?"); unchecked
+  steps: "I pressed Windows Up, but I can't tell if it worked." `tools/reliability.py` knows the new phrasing.
+- Planner diet: only the tools/abilities/rules a request or the front window needs (~25% fewer tokens); repairs
+  see everything. New planner rules: "close this" in a browser = the tab; never invent text to type; never guess a
+  site from one odd word; a statement isn't a request.
+- Speed: `open_folder` ability (Downloads/Documents/Desktop/Pictures/Screenshots, instant); screenshots live in
+  OneDrive "Screenshots 1". Timing from the logs: median ~2-3 s per request since agent mode; the slow ones are
+  FAILURES (check waits + repair call), so reliability is the speed fix.
+- `tools/replay.py [--ai N --skip M]`: every sentence the user ever said, routed offline (and N planned by Groq, dry
+  run) -> `logs/replay.txt`. Its findings are fixed and locked in `tests/test_replay.py`.
+- Fixes: "Open File Explorer" was a VS Code file; rules no longer take one part of a several-part sentence; names
+  fixed everywhere (`nlu._MISHEARD`: Physics Voila, Kazana, d football); "maximize Claude" in code; "close this tab
+  and close the chess tab as well" in code; an unreadable check drops the check, not the plan; the backup AI no
+  longer redoes a half-done request; GPU helper stopped while loading no longer counts as broken; "Back on …"
+  pop-ups for every fallback (`notify.fell_back/recovered`).
+- **Phase 4 logging done:** `jarvis/tasklog.py`: one line per request in `logs/tasks-<date>.jsonl` + a `Task:` line
+  in jarvis.log (result done/unconfirmed/asked/stuck/failed/stopped, why, time, AI calls, plan source, hearing).
+  The status page (http://127.0.0.1:8765/) has "Today's review" with what went wrong.
+- **Phase 5 started:** corrections (`jarvis/corrections.py`: "No, I meant Claude" redoes it and learns sound-alike
+  mishearings, applied to what's heard; "forget that"); pattern learning in `PlanMemory` ("search {x} on amazon").
+- BlueJ "create a new class called X" (`editors.new_class`, types only into BlueJ's own box, checks the class
+  appears); the dialog guard lets typing into a dialog's own focused box through. **Both untested live.**
+- Hearing check (synthetic voices, cloud): a coding-specific hint gains ~1 point only; not added (hint words can be
+  "heard" in noise).
 
 ## Agent core (Phase 1, built 29-30 Sep)
 - `jarvis/agent/`: `context` (screen as text, dialog/full screen/media of the FRONT app/pop-up), `ocr`, `checks`
@@ -59,22 +87,18 @@ Run the **whole PC by voice**: sit back and do ~99% of computer work reliably, f
   - PW cards have no accessible names: clicked by OCR, after the text stops moving (`_find_steady`). OCR clicks never use the browser's own tab strip (`elements.page_top`).
 - The user works on the PC in between: live tests only while they say it's free; stop at once when they say pause.
 
-## Open items (30 Sep, late, from the user's disappointing BlueJ session)
-- Fixed and committed: maximize crash, mouse-takeover crash, coding mode too eager (now strict).
-- NOT yet done: BlueJ "create a new class called X" ability (click New Class..., fill the name box, OK, check the
-  class appears); the agent's dialog guard still blocks typing into a dialog's own field (allow when focus is a
-  field). The user's BlueJ class "test" got junk code from the old coding mode: offer to clean it (undo / clear).
-- Live-test the stricter coding mode with the session's phrases before calling coding mode done.
+## Open items
+- Live-test when the user says the PC is free: BlueJ new class, stricter coding mode, "Did you mean Claude?",
+  "No, I meant …", "close this" in Chrome, the review page. The user's BlueJ class "test" has junk code from the old
+  coding mode: offer to clean it (undo / delete all).
 
 ## Next, in the user's order
-1. Phase 3 leftovers: see the 10x results in `logs/reliability.jsonl`; fix what failed.
-2. **Better logging** (Phase 4), then the user's 2–3 day trial (build Phase 5 on a branch meanwhile: a cloud-session
-   candidate), then a log review and fixes.
-3. **Self-healing** (Phase 5): corrections, visible names, per-app/site notes Jarvis writes itself, **pattern
-   learning** ("search X on Amazon" learned once works for any X), daily self-review, "forget that".
+1. Live tests of the 1 Oct batch (above), then the user's 2–3 day trial; review with the status page and
+   `logs/tasks-*.jsonl`, plus `tools/replay.py`.
+2. **Self-healing** (Phase 5) rest: per-app/site notes Jarvis writes itself, daily self-review (corrections,
+   patterns and "forget that" are built).
 4. Hardening (Phase 6), chess (Phase 7, with chess mode), then the EXE.
 
-- **Phase 6 speed note (30 Sep):** every ability goes to the AI with every request (27 now, ~1,900 tokens per action request). Send only the ones that fit the screen (code abilities only with an editor in front, PW only on PW…).
 
 Report the % done at each phase end.
 
