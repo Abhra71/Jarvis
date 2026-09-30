@@ -104,7 +104,7 @@ def _is_comment(text: str) -> bool:
 
 
 @ability("code_go_to_line", "VS Code: go to a line",
-         r"(?:go|jump|move|take me) to line (?:number )?(?P<value>[\w -]+)", value="line")
+         r"(?:go|jump|move|take me) to line (?:number )?(?P<value>[\w -]+)", value="n")
 def go_to_line(value: str):
     _need_vscode()
     n = _num(value)
@@ -158,19 +158,19 @@ def _toggle_comment(value: str | None, want: bool) -> str:
 
 
 @ability("code_comment", "VS Code: comment out a line or lines",
-         rf"comment(?: out)? {_LINES}(?: out)?", value="line or 'A to B'")
+         rf"comment(?: out)? {_LINES}(?: out)?", value="n or n to m")
 def comment(value: str | None = None):
     return _toggle_comment(None if value in ("this", "it", "this line", "that") else value, True)
 
 
 @ability("code_uncomment", "VS Code: uncomment a line or lines",
-         rf"un ?comment {_LINES}", value="line or 'A to B'")
+         rf"un ?comment {_LINES}", value="n or n to m")
 def uncomment(value: str | None = None):
     return _toggle_comment(None if value in ("this", "it", "this line", "that") else value, False)
 
 
 @ability("code_select_lines", "VS Code: select a line or lines",
-         r"select lines? (?:number )?(?P<value>[\w -]+?(?: (?:to|through|till|until) [\w -]+)?)", value="line or 'A to B'")
+         r"select lines? (?:number )?(?P<value>[\w -]+?(?: (?:to|through|till|until) [\w -]+)?)", value="n or n to m")
 def select_lines(value: str):
     _need_vscode()
     first, last = _range(value)
@@ -179,7 +179,7 @@ def select_lines(value: str):
 
 
 @ability("code_open_file", "VS Code: open a file of the project by name",
-         r"open (?:the )?file (?!called |named )(?P<value>[\w .-]+?)(?: in (?:vs )?code)?", value="file name")
+         r"open (?:the )?file (?!called |named )(?P<value>[\w .-]+?)(?: in (?:vs )?code)?", value="name")
 def open_file(value: str):
     _need_vscode()
     name = re.sub(r" dot ", ".", value.strip())
