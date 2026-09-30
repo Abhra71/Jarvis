@@ -855,7 +855,7 @@ class DictationTest(unittest.TestCase):
     def _assistant(self):
         from jarvis import assistant
         a = assistant.Assistant.__new__(assistant.Assistant)
-        a.dictating, a.dictated, a.coding, a.code_names = False, "", False, set()
+        a.dictating, a.dictated, a.coding, a.code_names, a.gaming = False, "", False, set(), False
         a.skills = mock.Mock()
         a.skills.call.side_effect = lambda name, args: "Typed it." if name == "type_text" else "Pressed."
         a.brain = mock.Mock(answer_agent=mock.Mock(return_value=None))

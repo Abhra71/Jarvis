@@ -206,3 +206,17 @@ class UploadTest(unittest.TestCase):
                 self.assertEqual(upload.find_file("marksheet", ("X",))[0].name, "Class_10_Marksheet.pdf")
                 self.assertIsNone(upload.find_file("resume", ("X",))[0])
                 self.assertIsNone(upload.find_file("env", ("X",))[0])
+
+
+class GamesTest(unittest.TestCase):
+    def test_phrases(self):
+        self.assertEqual(abilities.match("start efootball")[0].name, "start_game")
+        self.assertEqual(abilities.match("close the game")[0].name, "close_game")
+        self.assertIsNone(abilities.match("play football on youtube"))
+
+    def test_closing_is_never_forced(self):
+        from jarvis.abilities import games
+        with mock.patch.object(games, "_windows", side_effect=[[(1, "gamingservicesui.exe", "eFootball")], []]), \
+                mock.patch.object(games.win32gui, "PostMessage") as post:
+            self.assertEqual(games.close_game("the game"), "Closed eFootball.")
+        post.assert_called_once_with(1, games.win32con.WM_CLOSE, 0, 0)

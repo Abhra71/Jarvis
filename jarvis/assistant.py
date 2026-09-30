@@ -35,6 +35,9 @@ DICTATION_SILENCE = 30  # seconds of quiet that end dictation
 _CODING_ON = re.compile(r"(start |enter |turn on |switch to )?(coding|code) mode( on)?|start coding|let'?s code")
 _EXIT_BLOCK = re.compile(r"(come |get |go )?(out of|outside|exit|leave|after|close|end) (the |this )?(loop|block|if|else|"
                          r"while|for|braces?|brackets?|method|function|condition)|next block")
+# Gaming mode (30 Sep): no follow-up listening after a reply, so game sounds can't be taken for commands.
+_GAMING_ON = re.compile(r"(start |enter |turn on |switch to )?(gaming|game) mode( on)?|let'?s play")
+_GAMING_OFF = re.compile(r"(stop|end|exit|leave|turn off|quit) (gaming|game) mode|(gaming|game) mode off")
 _CODING_OFF = re.compile(r"(stop|end|exit|leave|turn off|quit) (coding|code)( mode)?|(coding|code) mode off|"
                          r"stop coding")
 # Said in coding mode but meant as a command, not code.
@@ -97,6 +100,7 @@ class Assistant:
         self.wake = None
         self.dictating = False
         self.coding = False  # coding mode: speech -> code in BlueJ / VS Code
+        self.gaming = False  # gaming mode: "Hey Jarvis" for every command (game sounds aren't commands)
         self.code_names: set[str] = set()  # variables written this session (VS Code doesn't show its code)
         self.dictated = ""  # the last piece typed, for "scratch that"
         self.mic = None
@@ -144,6 +148,13 @@ class Assistant:
         spoken = " ".join(text.lower().strip(" .!?,").split())
         if self.dictating:
             return "dictation", self._dictate(text, spoken)
+        if _GAMING_ON.fullmatch(spoken):
+            self.gaming = True
+            return "gaming", ("Gaming mode on. Say Hey Jarvis before each command. Start eFootball, close the game, "
+                              "maximize or minimize work as usual.")
+        if _GAMING_OFF.fullmatch(spoken):
+            self.gaming = False
+            return "gaming", "Gaming mode off."
         if _CODING_ON.fullmatch(spoken):
             self.coding = True
             log.info("Coding mode on")
@@ -428,7 +439,7 @@ class Assistant:
                 first = True
                 continue
 
-            if not listen.get("followup_seconds"):
+            if not listen.get("followup_seconds") or self.gaming:
                 return
             first = False
             self.mic.drain()  # drop our own voice before listening again
