@@ -757,3 +757,46 @@ class LiveSession30SepTest(unittest.TestCase):
         for said in ("stop", "never mind", "cancel that", "stop jarvis"):
             self.assertTrue(assistant._STOP.fullmatch(said), said)
         self.assertFalse(assistant._STOP.fullmatch("stop the music"))
+
+
+class CloudReview30SepTest(unittest.TestCase):
+    """Findings of the ultra review on 30 Sep."""
+
+    def test_abilities_never_press_keys_into_a_vm(self):
+        from jarvis import abilities
+        from jarvis.skills import desktop
+        with mock.patch.object(desktop, "front_window", return_value="vmware: Kali - VMware Workstation"), \
+                mock.patch("jarvis.abilities.windows.keys.press") as press:
+            reply = abilities.handle("snap left")
+        self.assertTrue(reply.startswith("Not done: a virtual machine is in front"))
+        press.assert_not_called()
+
+    def test_a_popup_that_keeps_coming_back_doesnt_spin(self):
+        desk = FakeDesktop()
+        desk.url = "https://pw.live/study-v2/study"
+        desk.popup = "Milestone Achieved"  # a notice: closed on its own, but it keeps reappearing
+        desk.effects["do"] = lambda a: "Closed the Milestone Achieved."
+        plan = {"steps": [{"do": "open_website", "args": {"url": "https://pw.live"}}, {"do": "look_again"}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            agent, _ = _agent(desk, [plan], tmp)
+            with mock.patch("jarvis.skills.popups.is_notice", return_value=True):
+                reply = agent.run("open the school portal page")
+        self.assertIn("keeps coming back", reply)
+        self.assertLessEqual(sum(1 for c in desk.calls if c[0] == "do"), 4)  # 1 before planning + at most 3
+
+    def test_a_paste_is_not_typed_again_when_the_clipboard_cant_be_given_back(self):
+        from jarvis.skills import desktop
+        import win32clipboard as cb
+        opens = iter([None, OSError("denied"), OSError("denied"), OSError("denied"), OSError("denied")])
+
+        def open_clipboard():
+            e = next(opens)
+            if e:
+                raise e
+        with mock.patch.object(cb, "OpenClipboard", side_effect=open_clipboard), \
+                mock.patch.object(cb, "CloseClipboard"), mock.patch.object(cb, "EmptyClipboard"), \
+                mock.patch.object(cb, "EnumClipboardFormats", return_value=0), \
+                mock.patch.object(cb, "SetClipboardText"), \
+                mock.patch.object(desktop.keyboard, "send_keys") as keys, mock.patch.object(desktop.time, "sleep"):
+            self.assertTrue(desktop._paste("a long piece of text to paste"))
+        keys.assert_called_once_with("^v")

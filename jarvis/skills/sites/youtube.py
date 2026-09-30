@@ -419,7 +419,7 @@ def play(query: str, hwnd: int | None, browser) -> str:
     if not videos:
         return f"I searched YouTube for {query}, but couldn't find a video to play."
     title, e = videos[0]
-    UIA, _ = _find_all(hwnd, "Hyperlink")
+    UIA, _ = desktop._uia()  # only the constants (review, 30 Sep: this re-read every link on the page)
     _open(UIA, e)
     log.info("YouTube: playing %r for %r", title, query)
     return f"Playing {title}."
@@ -434,6 +434,6 @@ def play_nth(hwnd, n: int) -> str:
     if n > len(videos):
         return f"I can only see {len(videos)} videos here."
     title, e = videos[n - 1]
-    UIA, _ = _find_all(hwnd, "Hyperlink")
+    UIA, _ = desktop._uia()  # only the constants (review, 30 Sep: this re-read every link on the page)
     _open(UIA, e)
     return f"Playing {title}."

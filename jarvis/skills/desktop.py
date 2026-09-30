@@ -462,18 +462,27 @@ def _paste(text: str) -> bool:
         finally:
             cb.CloseClipboard()
         keyboard.send_keys("^v")
-        time.sleep(0.15)  # let the app take it before the clipboard changes back
-        cb.OpenClipboard()
-        try:
-            cb.EmptyClipboard()
-            if old is not None:
-                cb.SetClipboardText(old, cb.CF_UNICODETEXT)
-        finally:
-            cb.CloseClipboard()
-        return True
     except Exception:
         log.debug("Paste failed; typing instead", exc_info=True)
         return False
+    # The text is pasted now. Giving the old clipboard back may fail for a moment (clipboard history or another
+    # app holds it): retry, but never report the paste as failed, or the text would be typed a second time.
+    time.sleep(0.15)  # let the app take it before the clipboard changes back
+    for _ in range(4):
+        try:
+            cb.OpenClipboard()
+            try:
+                cb.EmptyClipboard()
+                if old is not None:
+                    cb.SetClipboardText(old, cb.CF_UNICODETEXT)
+            finally:
+                cb.CloseClipboard()
+            break
+        except Exception:
+            time.sleep(0.1)
+    else:
+        log.info("Couldn't give the clipboard back after pasting")
+    return True
 
 
 def type_text(text: str, press_enter: bool = False) -> str:

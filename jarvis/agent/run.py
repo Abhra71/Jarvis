@@ -27,6 +27,7 @@ WAIT_STEP = 1.5
 POLL = 0.25
 SETTLE = 0.6      # before a look_again: let the page finish changing
 MAX_LOOKS = 3     # look_agains per request (each is one quick AI call)
+MAX_POPUPS = 2    # pop-ups closed on their own per request, before giving up on one that keeps returning
 PENDING_MINUTES = 5
 
 _FAILURE_STARTS = ("error", "not allowed", "not done", "not clicked", "unknown", "no ", "i couldn't", "i don't",
@@ -201,6 +202,7 @@ class Agent:
     def _execute(self, request: str, plan: Plan, out: Outcome, repaired: bool = False,
                  remember: bool = True, unsure: bool = False) -> str:
         steps, done, executed, results, narrated, looks, i = list(plan.steps), [], [], [], 0, 0, 0
+        closed_popups = 0
         unconfirmed: list[str] = []  # what was done but couldn't be checked: never claimed as a success
         last_seen = False            # the last step's result was SEEN on screen (a check that changed)
         reply = plan.reply
@@ -217,6 +219,9 @@ class Agent:
                     asked = self._popup(request, steps[i:], reply, popup, out, executed)
                     if asked:
                         return asked
+                    closed_popups += 1
+                    if closed_popups > MAX_POPUPS:  # it keeps coming back: don't spin (review, 30 Sep)
+                        return self._stuck(out, executed, f"the {popup} keeps coming back after I close it.")
                     looks -= 1
                     continue
                 system, user = continue_prompt(request, self.tools, done, snap.text(),

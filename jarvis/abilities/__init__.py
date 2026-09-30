@@ -58,10 +58,27 @@ def match(text: str) -> tuple[Ability, str | None] | None:
     return None
 
 
+# Abilities that never press keys or click in the front window: fine even with a virtual machine in front.
+NO_HANDS = {"find_newest", "open_file_here", "open_settings"}
+
+
+def _vm_in_front() -> bool:
+    """The same rule as Skills.call: never press keys or click into the user's VMware/VirtualBox (the keys would
+    go to another computer). Abilities run outside Skills.call, so they check it here too (review, 30 Sep)."""
+    try:
+        from ..skills import OFF_LIMITS_APPS, desktop
+        return desktop.front_window().lower().startswith(OFF_LIMITS_APPS)
+    except Exception:
+        return False
+
+
 def run(name: str, value: str | None = None) -> str:
     ab = REGISTRY.get(name)
     if not ab:
         return f"Unknown ability {name}. Choose from: {', '.join(REGISTRY)}."
+    if name not in NO_HANDS and _vm_in_front():
+        return ("Not done: a virtual machine is in front, and I never press keys or click in it. "
+                "Switch to another window first.")
     try:
         return ab.run(value) if ab.value_hint else ab.run()
     except (TypeError, ValueError) as e:
