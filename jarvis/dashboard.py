@@ -5,6 +5,7 @@ import logging
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from . import tasklog
 from .usage import usage
 
 log = logging.getLogger(__name__)
@@ -50,6 +51,20 @@ section{margin-bottom:16px}
   <div class="card"><div class="label">Failed</div><div class="big" id="fail">0</div></div>
 </div>
 
+<section class="card"><h2>Today's review</h2>
+<div class="grid" style="margin-bottom:8px">
+  <div><div class="label">Requests</div><div class="big" id="t-total">0</div></div>
+  <div><div class="label">Worked (seen done)</div><div class="big" id="t-ok">—</div></div>
+  <div><div class="label">Needed you</div><div class="big" id="t-asked">0</div></div>
+  <div><div class="label">Went wrong</div><div class="big" id="t-wrong">0</div></div>
+  <div><div class="label">Usual time</div><div class="big" id="t-time">—</div><div class="label" id="t-slow"></div></div>
+</div>
+<div class="wrap"><table>
+<thead><tr><th>Time</th><th>You said</th><th>Result</th><th>Why</th><th>Took</th><th>Heard by</th></tr></thead>
+<tbody id="wrong"></tbody></table></div>
+<div class="note">Every request is also saved, one line each, in logs/tasks-&lt;date&gt;.jsonl for the review after the trial.</div>
+</section>
+
 <section class="card"><h2>Models (in the order Jarvis tries them)</h2><div class="wrap"><table>
 <thead><tr><th>Model</th><th>State</th><th>Requests</th><th>OK</th><th>Limit hit</th><th>Busy / slow</th><th>Avg time</th><th>Tokens in / out</th><th>Allowance left</th><th>Last used</th></tr></thead>
 <tbody id="models"></tbody></table></div>
@@ -91,7 +106,23 @@ async function tick(){
       ||'<tr><td colspan="7" class="muted">Nothing yet today.</td></tr>';
   }catch(e){document.getElementById("sub").textContent="Jarvis isn't running (or restarting)…"}
 }
-tick();setInterval(tick,2000);
+async function review(){
+  try{
+    const t=await (await fetch("tasks.json",{cache:"no-store"})).json();const c=t.counts||{};
+    document.getElementById("t-total").textContent=t.total;
+    document.getElementById("t-ok").textContent=t.worked_percent==null?"—":t.worked_percent+"%";
+    document.getElementById("t-asked").textContent=c.asked||0;
+    document.getElementById("t-wrong").textContent=(c.stuck||0)+(c.failed||0)+(c.unconfirmed||0);
+    document.getElementById("t-time").textContent=t.median_seconds==null?"—":t.median_seconds.toFixed(1)+"s";
+    document.getElementById("t-slow").textContent=t.slow?`${t.slow} took 6 s or more`:"";
+    const cls={stuck:"b-bad",failed:"b-bad",unconfirmed:"b-warn"};
+    document.getElementById("wrong").innerHTML=t.wrong.map(e=>`<tr><td>${esc(e.time)}</td><td class="said">${esc(e.said)}</td>
+      <td><span class="badge ${cls[e.result]||""}">${esc(e.result)}</span></td><td class="said muted">${esc(e.why||e.reply)}</td>
+      <td>${(e.seconds??0).toFixed(1)}s</td><td class="muted">${esc(e.hearing?e.hearing.source+(e.hearing.unsure?" (unsure)":""):"—")}</td></tr>`).join("")
+      ||'<tr><td colspan="6" class="muted">Nothing went wrong today.</td></tr>';
+  }catch(e){}
+}
+tick();setInterval(tick,2000);review();setInterval(review,5000);
 </script></body></html>"""
 
 
@@ -102,6 +133,9 @@ def start(order_fn, port: int = 8765) -> str | None:
         def do_GET(self):
             if self.path.split("?")[0] == "/status.json":
                 body = json.dumps({**usage.snapshot(), "order": order_fn()}).encode()
+                ctype = "application/json"
+            elif self.path.split("?")[0] == "/tasks.json":
+                body = json.dumps(tasklog.summary(tasklog.read())).encode()
                 ctype = "application/json"
             elif self.path in ("/", "/index.html"):
                 body, ctype = PAGE.encode(), "text/html; charset=utf-8"

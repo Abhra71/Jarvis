@@ -202,6 +202,7 @@ class Transcriber:
     def __init__(self, cfg: dict, vocabulary: list[str] | None = None):
         # Names of the user's installed apps, so e.g. "Claude" isn't heard as "Cloud".
         self.unsure = False  # was the last transcript a shaky guess?
+        self.last: dict | None = None  # how the last sentence was heard: source, confidence, unsure
         self.unsure_below = cfg.get("unsure_below", -0.35)
         self.hint = HINT + (" Apps: " + ", ".join(w.title() for w in vocabulary) + "." if vocabulary else "")
         # The CPU model is always there (RAM only, no GPU): the fallback, and the whole thing without a GPU.
@@ -238,12 +239,15 @@ class Transcriber:
 
     def transcribe(self, audio: np.ndarray) -> str:
         self.unsure = False
-        result = None
+        result, source = None, "cpu"
         if self.cloud and self.cloud.usable():
             result = self.cloud.transcribe(audio, self.hint)  # None: the CPU model takes it (no loading wait)
+            source = "cloud"
         elif self.gpu:
             result = self.gpu.transcribe(audio, self.hint)
+            source = "gpu"
         if result is None:
+            source = "cpu"
             segments, _ = self.model.transcribe(
                 audio,
                 language="en",
@@ -267,5 +271,6 @@ class Transcriber:
             log.info("Ignoring %r: sounds like noise, not speech (no-speech %.2f)", text, no_speech)
             return ""
         self.unsure = confidence < self.unsure_below
+        self.last = {"source": source, "confidence": round(confidence, 2), "unsure": self.unsure}
         log.info("Heard: %r (confidence %.2f%s)", text, confidence, ", unsure" if self.unsure else "")
         return text

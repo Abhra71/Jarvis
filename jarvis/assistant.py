@@ -18,6 +18,7 @@ from . import coding
 from .skills import Skills, desktop, editors, elements, keys, request_parts, site_url, sites
 from .stt import Transcriber
 from .tts import Speaker
+from . import tasklog
 from .usage import usage
 from .wakeword import WakeWordDetector
 
@@ -125,6 +126,7 @@ class Assistant:
         self.dictating = False
         self.coding = False  # coding mode: speech -> code in BlueJ / VS Code
         self.gaming = False  # gaming mode: "Hey Jarvis" for every command (game sounds aren't commands)
+        self.heard: dict | None = None  # how the current sentence was heard (for the task log)
         self.code_names: set[str] = set()  # variables written this session (VS Code doesn't show its code)
         self.last_code = ""  # the last code written (the same thing twice is a misunderstanding, not a request)
         self.dictated = ""  # the last piece typed, for "scratch that"
@@ -165,6 +167,10 @@ class Assistant:
         """Text in, spoken reply out. Used by both voice mode and --text mode.
         `unsure`: speech recognition wasn't confident, so the AI is told to ask rather than guess."""
         usage.begin_turn(text)
+        turn = tasklog.Turn(text, getattr(self, "heard", None))
+        self.heard = None
+        agent = getattr(self.brain, "agent", None)
+        last_before = getattr(agent, "last", None)
         from .skills import mouse
         mouse.reset_takeover()  # every request starts fresh (30 Sep: a stale "you moved the mouse" crashed a turn)
         try:
@@ -176,6 +182,11 @@ class Assistant:
         reply = redact_secrets(reply)
         usage.end_turn(route, reply)
         log.info("Handled by %s", route)
+        last_after = getattr(agent, "last", None)
+        try:
+            turn.finish(route, reply, last_after if last_after is not last_before else None)
+        except Exception:
+            log.warning("Couldn't log the task", exc_info=True)
         return reply
 
     def _handle(self, text: str, unsure: bool = False) -> tuple[str, str]:
@@ -501,6 +512,7 @@ class Assistant:
                     self.speaker.say("Sorry, I didn't catch that.")
                 return
 
+            self.heard = dict(getattr(self.stt, "last", None) or {}) or None  # for the task log
             reply = self._handle_while_watching(text, self.stt.unsure)
             if reply:  # dictation types quietly
                 self._set(State.SPEAKING)
