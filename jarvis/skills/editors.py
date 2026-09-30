@@ -403,6 +403,58 @@ def open_class(said: str) -> str:
     return f"Not done: {name}'s editor didn't open."
 
 
+def class_name(said: str) -> str | None:
+    """'motivation' -> 'Motivation', 'digit sum check' -> 'DigitSumCheck'; None if it can't be a Java class name."""
+    words = re.findall(r"[A-Za-z0-9]+", said)
+    name = "".join(w[:1].upper() + w[1:] for w in words)
+    return name if re.fullmatch(r"[A-Z][A-Za-z0-9]{0,40}", name or "") else None
+
+
+def new_class(said: str) -> str:
+    """BlueJ: New Class..., type the name, OK, and check the class box appears (30 Sep: the agent couldn't type
+    into the dialog, and the user was stuck four times)."""
+    name = class_name(said)
+    if not name:
+        return f"Not done: {said!r} can't be a class name. Say a name like Motivation."
+    hwnd, project = _project_window()
+    if not hwnd:
+        return "Not done: no BlueJ project is open."
+    if any(n == name for n, _ in _class_buttons(hwnd)):
+        return f"There's already a class called {name} in {project}."
+    desktop._focus(hwnd)
+    time.sleep(0.4)
+    UIA, uia = desktop._uia()
+    found = uia.ElementFromHandle(hwnd).FindAll(UIA.TreeScope_Descendants, uia.CreatePropertyCondition(
+        UIA.UIA_NamePropertyId, "New Class..."))
+    if not found.Length:
+        return "Not done: I can't find BlueJ's New Class button."
+    _centre_click(found.GetElement(0))
+    deadline = time.monotonic() + 3
+    dialog = None
+    while time.monotonic() < deadline:
+        time.sleep(0.2)
+        front = win32gui.GetForegroundWindow()
+        if front != hwnd and any(h == front and p.startswith("java") for h, p, _ in desktop._app_windows()):
+            dialog = front
+            break
+    if not dialog:
+        return "Not done: BlueJ's New Class box didn't open."
+    time.sleep(0.3)  # its name box takes the cursor as it opens
+    if win32gui.GetForegroundWindow() != dialog:
+        return "Not done: BlueJ's New Class box lost the focus, so I didn't type."
+    desktop.type_text(name)
+    time.sleep(0.2)
+    keys.press("enter")  # OK is the default button
+    deadline = time.monotonic() + 4
+    while time.monotonic() < deadline:
+        time.sleep(0.3)
+        if any(n == name for n, _ in _class_buttons(hwnd)):
+            return f"Created the class {name}."
+    if win32gui.GetForegroundWindow() == dialog:
+        return f"Not done: BlueJ's New Class box is still open; it may not accept the name {name}."
+    return f"Not done: I don't see the class {name} in {project}."
+
+
 def run_main(cls: str, project: str | None = None) -> str:
     UIA, uia = desktop._uia()
     hwnd, project = _project_window(project)

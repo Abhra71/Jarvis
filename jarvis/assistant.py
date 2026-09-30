@@ -216,7 +216,10 @@ class Assistant:
         if self.coding and _EXIT_BLOCK.fullmatch(spoken) and editors.current():
             r = editors.current().exit_block()
             return "coding", "" if r == "ok" else r
-        if self.coding and editors.current() and not abilities.match(text):
+        hit = abilities.match(text) if self.coding else None
+        if hit and hit[0].name == "bluej_new_class" and not isinstance(editors.current(), editors.BlueJ):
+            hit = None  # "create a class called Shape" in VS Code is code to write, not BlueJ's New Class button
+        if self.coding and editors.current() and not hit:
             reply = self._code(text, editors.current(), unsure)
             if reply is not None:
                 return "coding", reply  # else it wasn't code: handled as a normal request below

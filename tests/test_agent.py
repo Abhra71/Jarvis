@@ -434,6 +434,16 @@ class HonestyTest(unittest.TestCase):
         self.assertIn("dialog box is open", think.call_args_list[1][0][1])
         self.assertEqual([c[0] for c in self.desk.calls], ["click_element", "press_key"])  # no key behind the dialog
 
+    def test_typing_into_the_dialogs_own_box_is_allowed(self):
+        # 30 Sep: BlueJ's "New Class" dialog: its name box has the cursor, and typing the name was refused.
+        self.desk.dialog = "Create New Class"
+        self.desk.focus = "field"
+        self.desk.effects["type_text"] = lambda a: "Typed it."
+        plan = {"steps": [{"do": "type_text", "args": {"text": "Motivation"}}], "reply": "Named it."}
+        agent, _ = _agent(self.desk, [plan], self.tmp.name)
+        agent.run("type Motivation")
+        self.assertEqual(self.desk.calls, [("type_text", {"text": "Motivation"})])
+
     def test_unchecked_steps_are_said_honestly(self):
         self.desk.effects["press_key"] = lambda a: "Pressed f5."
         plan = {"steps": [{"do": "press_key", "args": {"key": "f5"}}], "reply": "Refreshed the page."}

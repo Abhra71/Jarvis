@@ -94,6 +94,17 @@ def open_class(value: str):
     return editors.open_class(value)
 
 
+@ability("bluej_new_class", "BlueJ: create a new class",
+         r"(?:create|make|add) (?:a |an )?(?:new )?class (?:called |named |and name it |and call it )?(?P<value>[\w ]+?)"
+         r"(?: in (?:bluej|blue j|blue jay|this project))?",
+         r"(?:create|make|add) (?:a |an )?new class",
+         r"new class (?:called |named )?(?P<value>[\w ]+)", value="class name")
+def new_class(value: str | None = None):
+    if not value:
+        return "Say it with the name, like: create a new class called Motivation."
+    return editors.new_class(value)
+
+
 @ability("code_open_file", "VS Code: open a file of the project by name",
          r"open (?:the )?file (?!called |named |explorer|manager|with |of )(?P<value>[\w .-]+?)(?: in (?:vs )?code)?", value="name")
 def open_file(value: str):

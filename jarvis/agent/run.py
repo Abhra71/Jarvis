@@ -444,6 +444,10 @@ class Agent:
         key = str(step.args.get("key", "")).lower()
         if step.tool == "press_key" and key in ("enter", "esc", "escape", "tab", "shift+tab", "alt+f4"):
             return None  # answering the dialog itself
+        if before.dialog and step.tool in ("type_text", "press_key") and before.focus in ("field", "dropdown"):
+            # The cursor is in a box: with a dialog open, that's the dialog's own box (a dialog takes the focus).
+            # 30 Sep: BlueJ's "New Class" name box couldn't be typed into.
+            return None
         if before.dialog:
             return f"A dialog box is open in front ({before.dialog}); it has to be answered first."
         return None
