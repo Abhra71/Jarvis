@@ -606,6 +606,12 @@ class Brain:
                 handoff = e
             except BrainUnavailable as e:
                 last = e
+                if self.turn_calls and i + 1 < len(chain):
+                    # It failed partway (1 Oct bug hunt): the next AI must carry on, not do it all again
+                    # (it would open the app twice, or type the text twice).
+                    done = "; ".join(f"{n}({', '.join(f'{k}={v!r}' for k, v in a.items())}) -> {str(r)[:80]}"
+                                     for n, a, r in self.turn_calls)
+                    text += f"\n(Already done for this request, by the other AI: {done}. Don't repeat those; do the rest.)"
                 if provider == "gemini" and "busy" in str(e) and self.groq:
                     self.gemini_slow_until = time.monotonic() + self.cfg.get("slow_backoff_seconds", 180)
                     usage.set_activity("Gemini is stalling; using Groq first for a few minutes")
