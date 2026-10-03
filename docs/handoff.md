@@ -8,11 +8,11 @@ Run the **whole PC by voice**: sit back and do ~99% of computer work reliably, f
 - AI is a **luxury** (free Groq + Gemini only). Everyday work runs in code.
 - Never: deleting, secret files (`.env`, keys), typing into VMware/Kali, sending or buying without a spoken yes.
 
-## Where we are (3 Oct, after Blocks 1 and 2)
+## Where we are (3 Oct, after Blocks 1-3)
 - Block 1 (trust) done and live-tested: background talk ignored, Share needs a yes, 8 live bugs fixed, the 20-task
   reliability run at 99%.
-- Block 2 (coding mode) done and live-tested in scratch BlueJ/VS Code files. **Next: Block 3, speed.**
-  Dream ~64%, daily-use feel ~40% (coding mode not yet used by the user for real).
+- Block 2 (coding mode) done and live-tested in scratch BlueJ/VS Code files.
+- Block 3 (speed) done. **Next: Block 4, the user's 2-3 day trial** ("continue Jarvis: block 4" after it, to review).
 
 ## Where we were (1 Oct)
 - Honest score: agent ~64%, **the dream overall ~60%**, but **daily-use feel ~30-35%** (the user: "I still won't
@@ -140,10 +140,28 @@ Full plan: ~/.claude/plans/yea-agent-industry-grade-adaptive-lampson.md. The use
   every 30 Sep sentence). The suite now takes ~45 s (compiler tests).
 - Open: offer to clean the user's own BlueJ class "test" (old junk code); not touched.
 
-**Block 3: Speed.** Cache snapshots, read the screen and plan in parallel, fail fast, more code plans. Targets: code
-≤1.5 s, AI ≤4 s.
+**Block 3: Speed. DONE 3 Oct** (targets: code ≤1.5 s, AI ≤4 s median; met by the task logs: code ~1.5 s, AI ~1.9 s):
+- Tabs read from the browser's own tab strip only (`desktop._tab_strip`, remembered per window): closing YouTube
+  tabs 7.5 s -> ~1 s (the page's "All / For you" chips no longer count as tabs).
+- PW subjects and Khazana courses opened once are remembered in `data/pw.json` and opened straight by address.
+- In code now (were AI, 2-9 s): plain searches ("search X on youtube/amazon", `_SEARCH_CONTEXT` keeps "search it
+  here" with the AI), "open main profile in Chrome", "close this" with an app in front (`plan._CLOSE_APP`;
+  editors/terminals/Notepad/Office/Claude still go to the AI).
+- Keys: 20 ms pause (was 50); repeated arrows 10 ms in one call. VS Code coding 1.2-1.6 s -> 0.5-0.8 s per line
+  (clipboard restored as soon as the paste shows; its cursor after reading is known: its status bar lags ~0.1 s).
+- Also: arrays in coding mode ("create a 2D int array called arr with 3 rows and 4 columns"; no size = Jarvis
+  asks), navigation ("go to the end of the file", "next line", "go down 3 lines", "read line 12").
+- YouTube play stays ~4-5 s: page load and the video starting, checked.
+- Reliability run after Block 3: **100/100**. Medians: close all YouTube tabs 7.5 -> 0.5 s, PW batch chemistry
+  7.8 -> 1.4 s, Khazana 6.9 -> 4.2 s, snap 5.3 -> 0.5 s, newest pdf 1.3 -> 0.8 s. "What's on my screen?" ~6 s
+  (Gemini vision; the only slow one left).
+
+**Release order (the user, 3 Oct; memory `jarvis-release-order`):** Block 4 trial → fixes → Blocks 5-7 → only when
+the feel is near 100%: the full beta (wizard, own keys + guide, terminal install, consent, scrubbed reports) →
+tested on the user's second laptop → then friends. Plan: ~/.claude/plans/try-again-tidy-creek.md.
 **Block 4: Trial** (2–3 days) and review. **Block 5:** Phase 5 rest (site notes, daily self-review).
-**Block 6:** Hardening. **Block 7:** Chess mode (vision board, voice moves, a mode switch). **Block 8:** EXE.
+**Block 6:** Hardening. **Block 7:** Chess mode (vision board, voice moves, a mode switch). **Block 8:** the beta,
+then the EXE (see the release order).
 
 Also open: the user's BlueJ class "test" has junk code from the old coding mode; offer to clean it.
 
