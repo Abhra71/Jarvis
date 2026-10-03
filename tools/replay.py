@@ -49,14 +49,18 @@ def sentences() -> list[tuple[str, bool]]:
             seen.add(key)
             out.append((text, unsure))
 
-    for f in sorted((ROOT / "logs").rglob("usage-*.json")):  # old days are kept in logs/archive-*
+    history = ROOT / "data" / "heard-history.json"  # everything heard before the 3 Oct trial (those logs are gone)
+    if history.exists():
+        for h in json.loads(history.read_text(encoding="utf-8"))["heard"]:
+            add(h["said"], h["unsure"])
+    for f in sorted((ROOT / "logs").glob("usage-*.json")):
         try:
             for t in json.loads(f.read_text(encoding="utf-8")).get("turns", []):
                 if t.get("said"):
                     add(t["said"], False)
         except (OSError, ValueError):
             pass
-    for log in sorted((ROOT / "logs").glob("archive-*/jarvis.log")) + [ROOT / "logs" / "jarvis.log"]:
+    for log in [ROOT / "logs" / "jarvis.log"]:
         if not log.exists():
             continue
         for line in log.read_text(encoding="utf-8", errors="replace").splitlines():

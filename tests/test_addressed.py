@@ -78,18 +78,19 @@ class BackgroundTest(unittest.TestCase):
         """Regression: nothing the user said in a logged session (with the hearing it really had) is dropped,
         except the 1 Oct room talk."""
         room = {t for t, _ in ROOM_TALK + SONG + NOISE}
-        for f in sorted((ROOT / "logs").rglob("tasks-*.jsonl")):  # old days are kept in logs/archive-*
-            if f.name > "tasks-2026-10-02.jsonl":
+        history = ROOT / "data" / "heard-history.json"  # the logs before the 3 Oct trial, kept as sentences
+        if not history.exists():
+            self.skipTest("no data/heard-history.json on this PC")
+        for e in json.loads(history.read_text(encoding="utf-8"))["tasks"]:
+            if e["day"] > "2026-10-02":
                 continue  # a fixed set: later days may hold new background talk (add it to the lists above)
-            for line in f.read_text(encoding="utf-8").splitlines():
-                e = json.loads(line)
-                conf = (e.get("hearing") or {}).get("confidence")
-                if e.get("time", "").startswith("21:2") and "10-01" in f.name or e.get("result") == "ignored":
-                    continue  # the room talk itself (some of it is cut short in ROOM_TALK)
-                if e["said"] in room:
-                    continue
-                with self.subTest(said=e["said"][:50]):
-                    self.assertIsNone(addressed.background_reason(e["said"], conf, followup=True))
+            conf = e.get("confidence")
+            if e.get("time", "").startswith("21:2") and e["day"] == "2026-10-01" or e.get("result") == "ignored":
+                continue  # the room talk itself (some of it is cut short in ROOM_TALK)
+            if e["said"] in room:
+                continue
+            with self.subTest(said=e["said"][:50]):
+                self.assertIsNone(addressed.background_reason(e["said"], conf, followup=True))
 
 
 class ConversationTest(unittest.TestCase):

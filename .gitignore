@@ -9,3 +9,7 @@ data/popups.json
 data/pw.json
 *.bin
 data/corrections.json
+data/heard-history.json
+
+# live-test scratch files (the BlueJ project JarvisScratch, scratch.cpp, the live runner)
+scratch/

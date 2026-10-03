@@ -161,6 +161,9 @@ the feel is near 100%: the full beta (wizard, own keys + guide, terminal install
 tested on the user's second laptop → then friends. Plan: ~/.claude/plans/try-again-tidy-creek.md.
 **Beta, personalization and self-learning spec (the user, 3 Oct): `docs/beta-plan.md`** (GUI wizard after a
 terminal install, the welcome survey, learning a new person, recipes: AI once then code). Wake word is now "Hi Jarvis".
+**Logs before the trial were deleted (3 Oct, the user's ask);** every sentence heard is kept in
+`data/heard-history.json` (not in git; read by `tools/replay.py` and `tests/test_addressed.py`). Live-test scratch
+files live in `scratch/` (not in git): the BlueJ project JarvisScratch, scratch.cpp, `live.py` (ONLY:/FOCUS: guards).
 **Block 4: Trial** (2–3 days) and review. **Block 5:** Phase 5 rest (site notes, daily self-review).
 **Block 6:** Hardening. **Block 7:** Chess mode (vision board, voice moves, a mode switch). **Block 8:** the beta,
 then the EXE (see the release order).
