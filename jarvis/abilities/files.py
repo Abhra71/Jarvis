@@ -217,7 +217,8 @@ def open_file_here(said: str):
          r"videos|screenshots)(?: folder)?",
          # "show me my desktop" means minimise everything: showing needs the word folder
          r"show(?: me)? (?:my |the )?(?P<value>downloads?|documents?|desktop|pictures?|photos|music|videos|"
-         r"screenshots) folder")
+         r"screenshots) folder",
+         value="downloads/documents/desktop/pictures/music/videos/screenshots")
 def open_folder(value: str):
     """1 Oct speed report: 'Open downloads.' went to the AI (2 calls, 6 s). A folder the user names is instant."""
     name = {"download": "downloads", "document": "documents", "picture": "pictures", "photos": "pictures",

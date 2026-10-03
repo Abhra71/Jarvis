@@ -41,6 +41,24 @@ class _FakeWindow:
             p.stop()
 
 
+class CatalogTest(unittest.TestCase):
+    def test_an_ability_that_takes_a_value_gets_one(self):
+        """3 Oct live test: 'Open downloads' matched open_folder, which was run without its value (no value
+        hint), so it failed and went to the AI every time."""
+        import inspect
+        for ab in abilities.REGISTRY.values():
+            with self.subTest(ability=ab.name):
+                takes = bool(inspect.signature(ab.run).parameters)
+                self.assertEqual(bool(ab.value_hint), takes)
+                if any("(?P<value>" in p.pattern for p in ab.patterns):
+                    self.assertTrue(takes)
+
+    def test_open_folder_runs_with_its_folder(self):
+        with mock.patch.object(abilities.files.files, "open_path", side_effect=lambda p: f"Opened {p}.") as op:
+            self.assertEqual(abilities.handle("Open downloads"), "Opened downloads.")
+        op.assert_called_once_with("downloads")
+
+
 class MatchTest(unittest.TestCase):
     def _hit(self, said):
         hit = abilities.match(said)

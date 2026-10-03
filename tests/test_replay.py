@@ -63,6 +63,13 @@ class ReplayTest(unittest.TestCase):
         self.assertEqual([s.label() for s in p.steps], ["browser(action='close_tab')"])
         self.assertIsNone(planmod.code_plan("Close this.", "notepad: a.txt - Notepad"))
 
+    def test_this_tab_and_the_chess_tab_is_checked(self):
+        """3 Oct live: both tabs closed, but the first step had no check, so it said 'I can't tell'."""
+        p = planmod.code_plan("close this tab and close the chess tab as well",
+                              "chrome: Example Domain - Google Chrome")
+        self.assertEqual(len(p.steps), 2)
+        self.assertIsNotNone(p.steps[0].check)
+
 
 if __name__ == "__main__":
     unittest.main()

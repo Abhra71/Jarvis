@@ -195,6 +195,8 @@ def open_dialog(hwnd: int | None = None) -> str:
     button = uia.CreatePropertyCondition(UIA.UIA_ControlTypePropertyId, UIA.UIA_ButtonControlTypeId)
     for i in range(min(found.Length, 5)):
         dlg = found.GetElement(i)
+        if "infobar" in f"{dlg.CurrentName} {dlg.CurrentClassName}".lower():
+            continue  # 3 Oct: Chrome's "Pin Chrome to your taskbar" bar has a Close button but blocks nothing
         # Only a real dialog: it has the buttons dialogs have (apps nest ordinary windows too).
         buttons = dlg.FindAll(UIA.TreeScope_Descendants, button)
         names = {" ".join((buttons.GetElement(j).CurrentName or "").lower().split()) for j in range(buttons.Length)}

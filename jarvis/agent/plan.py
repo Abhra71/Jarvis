@@ -227,7 +227,9 @@ def code_plan(text: str, front: str = "", unsure: bool = False) -> Plan | None:
     for part in parts:
         part = _AS_WELL.sub("", part)
         if in_browser and _CLOSE_THIS.fullmatch(part):
-            steps.append(Step("browser", {"action": "close_tab"}))
+            # The front tab's title is known only before the first step (3 Oct live: unchecked = "can't tell").
+            check = checks.Check("window", title, True) if not steps and title else None
+            steps.append(Step("browser", {"action": "close_tab"}, check))
             continue
         m = _APP_WINDOW.fullmatch(part)
         if not m and last_verb:  # "snap chrome left and VS Code right": the verb is said once
