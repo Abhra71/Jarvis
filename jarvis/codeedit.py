@@ -263,6 +263,20 @@ def _say(code: str) -> str:
     """The first line of code, said like a person: 'int i = 0;' -> 'int i equals 0'."""
     first = next((ln.strip() for ln in code.replace(CURSOR, "").split("\n") if ln.strip()), "")
     s = first.rstrip(";{ ").rstrip()
+    # loops and methods by what they mean (3 Oct live: "for i equals 1, i at most 5, i plus plus")
+    m = re.fullmatch(r"for \((?:int )?(\w+) = (.+?); \1 (<=|<|>=|>) (.+?); \1(\+\+|--|\s*[+-]= ?\S+)\)", s)
+    if m:
+        v, a, op, b, step = m.groups()
+        up = {"<=": "to", "<": "below", ">=": "down to", ">": "down to above"}[op]
+        by = "" if step in ("++", "--") else f", step {step.split('=')[-1].strip()}"
+        return f"a for loop, {v} from {a} {up} {b}{by}"
+    m = re.fullmatch(r"(?:(?:public|private|protected|static|final)\s+)*([\w<>\[\]]+)\s+(\w+)\s*\((.*)\)(?:\s*throws.*)?", s)
+    if m and m.group(1) not in ("new", "return", "else") and not _CONTROL.match(s):
+        args = m.group(3).strip()
+        return f"a method {m.group(2)}" + (f" taking {args}" if args and "[]" not in args else "")
+    m = re.fullmatch(r"(if|while|else if) \((.+)\)", s)
+    if m:
+        s = f"{m.group(1)} {m.group(2)}"
     s = re.sub(r"System\.out\.println", "print line", s)
     s = re.sub(r"System\.out\.print", "print", s)
     for a, b in (("==", " is equal to "), ("!=", " not equal to "), ("<=", " at most "), (">=", " at least "),

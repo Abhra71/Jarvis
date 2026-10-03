@@ -42,6 +42,7 @@ class Error:
         m = {"';' expected": "a semicolon is missing", "reached end of file while parsing":
              "a closing brace is missing at the end"}.get(m, m)
         m = re.sub(r"^expected .*';' before .*", "a semicolon is missing", m)
+        m = re.sub(r"^cannot find symbol (\w+)$", r"\1 isn't known there", m)
         m = re.sub(r"^cannot find symbol$", "a name it doesn't know", m)
         m = re.sub(r"^'(\w+)' was not declared in this scope.*", r"\1 isn't declared", m)
         return f"line {self.line}: {m}"
@@ -95,6 +96,11 @@ def errors(text: str, lang: str) -> tuple[Error, ...] | None:
             m = pat.match(ln.strip())
             if m:
                 out.append(Error(int(m.group(1)), m.group(2).strip()))
+                continue
+            sym = re.match(r"\s*symbol:\s+(?:variable|method|class)\s+(\w+)", ln)
+            if sym and out and out[-1].message == "cannot find symbol":
+                # javac names the unknown thing on the next lines: "symbol: variable i"
+                out[-1] = Error(out[-1].line, f"cannot find symbol {sym.group(1)}")
         if r.returncode and not out:
             log.warning("Code check failed with no readable error: %s", (r.stderr or r.stdout)[:300])
         return tuple(out)

@@ -354,10 +354,38 @@ class BlueJ(Editor):
         line = self.caret_line()
         return text.replace("\r\n", "\n").replace("\r", "\n"), (line - 1 if line else None)
 
+    def place(self, line: int):
+        """Arrow keys from the line the cursor is on (BlueJ's caret is readable): ~0.1 s, where its Go to line box
+        took ~1 s (3 Oct live). The Go to line box only if the arrows didn't land."""
+        now = self.caret_line()
+        if now is not None:
+            steps = line + 1 - now
+            while steps:
+                n = max(-30, min(30, steps))
+                keys.press("down" if n > 0 else "up", abs(n))
+                steps -= n
+            keys.press("end")
+            time.sleep(0.05)
+            if self.caret_line() == line + 1:
+                return
+        self.go_to_line(line + 1)
+        keys.press("end")
+
     def _tp(self):
         UIA, uia = desktop._uia()
         el = uia.GetFocusedElement()
         p = el.GetCurrentPattern(UIA.UIA_TextPatternId) if el else None
+        if not p:
+            # 3 Oct: right after the window comes to the front, the focus is on the window, not its code box
+            root = uia.ElementFromHandle(win32gui.GetForegroundWindow())
+            box = root.FindFirst(UIA.TreeScope_Descendants, uia.CreatePropertyCondition(
+                UIA.UIA_IsTextPatternAvailablePropertyId, True))
+            p = box.GetCurrentPattern(UIA.UIA_TextPatternId) if box else None
+            if p:
+                try:
+                    box.SetFocus()
+                except Exception:
+                    pass
         return (UIA, p.QueryInterface(UIA.IUIAutomationTextPattern)) if p else (UIA, None)
 
     def text(self) -> str | None:
