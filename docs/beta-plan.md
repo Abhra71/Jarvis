@@ -60,3 +60,20 @@ Rule: **detect first, ask only what can't be detected**, pre-fill answers, use t
 - Consent first; scrubbed: no audio, screenshots, typed text, passwords, keys, emails; site names and step results
   only. "That was wrong" command marks a task. One-way upload to a receiver only the user reads; a dashboard; updates.
 - Before building: ask the user for each test laptop's specs and where reports should go.
+
+## 7. Going public: repository refresh (the user, 3 Oct; do it just before the beta build, not now)
+Jarvis stops being "only for me" and becomes a product anyone in the world can use. The repo must attract users.
+- **Three flagship features** lead everything (README, demo, description) and get the most polish and tests:
+  1. **Self-healing / self-learning**: AI once on anything new, then code forever; a broken step is repaired alone;
+     it learns each new person's habits by itself.
+  2. **Coding mode**: write Java (BlueJ) and C++ (VS Code) by talking; never leaves broken code; undo; error check.
+  3. **Chess mode**: play chess by voice (Block 7).
+  Everything else is "also does".
+- **Remove everything stale**: old plans (`docs/jarvis4-plan.md`, `docs/archive/`, `ROADMAP.md` history),
+  `tools/prototypes/`, unused eval tools, dead code; personal values (names, PW batch, Rockerz, paths) move into the
+  profile.
+- **README as a product page**: one-line pitch, a short demo GIF per flagship, "what you can say", privacy,
+  one-command install, requirements, FAQ. GitHub description, topics, tags; LICENSE, CONTRIBUTING, issue template.
+- **Every message clear, crisp, friendly**: spoken replies, pop-ups, wizard, errors, status page; commits and
+  release notes as a short headline plus one plain line.
+- Ask the user then: public name/branding, and whether to keep git history or start a fresh public repo.

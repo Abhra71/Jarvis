@@ -161,6 +161,8 @@ the feel is near 100%: the full beta (wizard, own keys + guide, terminal install
 tested on the user's second laptop → then friends. Plan: ~/.claude/plans/try-again-tidy-creek.md.
 **Beta, personalization and self-learning spec (the user, 3 Oct): `docs/beta-plan.md`** (GUI wizard after a
 terminal install, the welcome survey, learning a new person, recipes: AI once then code). Wake word is now "Hi Jarvis".
+**Going public (3 Oct):** after the trial Jarvis becomes a product for everyone; flagships = self-learning,
+coding mode, chess mode; repo refresh just before the beta (`docs/beta-plan.md` section 7).
 **Logs before the trial were deleted (3 Oct, the user's ask);** every sentence heard is kept in
 `data/heard-history.json` (not in git; read by `tools/replay.py` and `tests/test_addressed.py`). Live-test scratch
 files live in `scratch/` (not in git): the BlueJ project JarvisScratch, scratch.cpp, `live.py` (ONLY:/FOCUS: guards).
