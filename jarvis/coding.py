@@ -191,6 +191,21 @@ def translate(said: str, lang: str, code: str | None = None, names: set[str] | N
         return (f"{ct} {name};\n" if name not in known else "") + f"cin >> {name};"
 
     # loops and conditions
+    # 30 Sep: "write a for loop where i is equal to 0, i is less than 10, i++" (said the C way: start; test; step)
+    m = re.fullmatch(r"(?:write |make |create |add )?(?:a |an )?for(?: loop)?(?: where| with| in which| such that)? "
+                     r"(?P<v>[a-z]\w*) (?:is )?(?:equal to|equals|=|is|as) (?P<a>\S+) (?:and )?(?P=v) (?:is )?"
+                     r"(?P<op>less than or equal to|less than equal to|less than|greater than or equal to|"
+                     r"greater than equal to|greater than|at most|at least|<=|<|>=|>) (?P<b>\S+) (?:and )?(?P=v) ?"
+                     r"(?P<inc>\+\+|plus plus|--|minus minus)", s)
+    if m:
+        v = m.group("v")
+        cmp = {"less than or equal to": "<=", "less than equal to": "<=", "less than": "<", "at most": "<=",
+               "greater than or equal to": ">=", "greater than equal to": ">=", "greater than": ">",
+               "at least": ">="}.get(m.group("op"), m.group("op"))
+        inc = f"{v}++" if m.group("inc") in ("++", "plus plus") else f"{v}--"
+        decl = "" if v in known else "int "
+        return _block(f"for ({decl}{v} = {expression(m.group('a'), known)}; {v} {cmp} "
+                      f"{expression(m.group('b'), known)}; {inc})", lang)
     m = re.fullmatch(r"(?:a |make a |create a )?for(?: loop)?(?: with| using)? (?P<v>[a-z]\w*) (?:from|=|equals|"
                      r"equal to|starting at|starting from) (?P<a>.+?) (?P<op>down to|to|till|until|up to|through|"
                      r"less than|below|greater than|above)(?P<b> .+?)(?: step (?P<s>\w+))?", s)

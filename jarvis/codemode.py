@@ -59,6 +59,7 @@ WRAP = re.compile(r"(?:wrap|put|move|place|shift|take|keep|insert) " + _WHAT +
                   r" (?:inside|into|in|within|under|to) (?:of )?(?:the |a |an )?(?P<where>.+)")
 CURSOR_INTO = re.compile(r"(?:move|go|take|put|place|jump)(?: me| the cursor| cursor)? (?:inside|into|in|to) "
                          r"(?:the )?(?P<n>main|[a-z]\w*)(?: method| function| loop| class| block)?")
+CURSOR_LOOSE = re.compile(r"(?:move|go|take|put|place|jump)(?: me| the cursor| cursor)? (?:inside|into|in|to) ")
 EXIT = re.compile(r"(?:come |get |go )?(?:out of|outside|exit|leave|after|close|end) (?:the |this )?(?:loop|block|if|"
                   r"else|while|for|braces?|brackets?|method|function|condition)|next block")
 DELETE = re.compile(r"(?:delete|remove|erase|cut) (?:the )?(?:line (?:number )?(?P<a>\w+)(?: (?:to|through|till) "
@@ -81,6 +82,7 @@ CODE_VERB = re.compile(r"(?:write|add|make|create|declare|define|implement|gener
                        r"initiali[sz]e|increase|decrease|return|input|read|for|while|if|else)\b")
 # Said in coding mode but meant as a command for Jarvis, not code: handled the normal way.
 NOT_CODE = re.compile(r"(?:open|close|play|pause|resume|volume|mute|unmute|search|switch|minimi[sz]e|maximi[sz]e|"
+                      r"optimi[sz]e|type|dictate|"
                       r"snap|scroll|save|copy|paste|go back|what|who|how|why|when|tell me|turn (?:on|off)|"
                       r"brightness|night light|bluetooth|wi ?fi|email|upload|stop|cancel|press|click|"
                       r"compile|run|execute|comment|uncomment|select|go to|jump to|open class|show)\b")
@@ -171,6 +173,8 @@ class CodeMode:
         m = CURSOR_INTO.fullmatch(spoken)
         if m:
             return self.cursor_into(ed, m.group("n"))
+        if CURSOR_LOOSE.match(spoken) and re.search(r"\bmain\b", spoken):
+            return self.cursor_into(ed, "main")  # 30 Sep: "move inside the main class or main method"
         if EXIT.fullmatch(spoken):
             return self.exit_block(ed)
         m = DELETE.fullmatch(spoken)
@@ -179,8 +183,8 @@ class CodeMode:
         m = RENAME.fullmatch(spoken)
         if m:
             return self._structure(ed, lambda t, c: codeedit.rename(t, m.group("o"), m.group("n")), check=True)
-        if NOT_CODE.match(spoken):
-            return None
+        if NOT_CODE.match(spoken) or text.rstrip().endswith("?"):
+            return None  # a request or a question: answered the normal way
         return self.write_code(text, spoken, ed, unsure)
 
     # ---- writing ------------------------------------------------------------------------------------------------

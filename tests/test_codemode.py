@@ -159,3 +159,45 @@ class SessionTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ThirtySeptemberTest(unittest.TestCase):
+    """Every sentence of the 30 Sep coding session (BlueJ, class 'test'), with what it must do now. Then it
+    made methods out of noise ('Ect.' -> 'public void ect()'), and a second class and main for 'wrap this'."""
+
+    NOISE = ["Tshimun.", "Ect.", "Rongen.", "Ssss.", "VS Code.", "Mines.", "Epsi.", "IOS Stream,"]
+    NOT_CODE = ["Optimize the screen.", "Can you type something on my screen?"]
+
+    def test_noise_and_requests_write_nothing(self):
+        ed = FakeEditor("public class test\n{\n}", 1, title="test - java")
+        cm = codemode.CodeMode(think=mock.Mock(side_effect=AssertionError("no AI for noise")))
+        for said in self.NOISE:
+            with self.subTest(said=said):
+                self.assertEqual(say(cm, ed, said, unsure=True), "")
+        for said in self.NOT_CODE:
+            with self.subTest(said=said):
+                self.assertIsNone(say(cm, ed, said))  # a normal request: Jarvis handles it as usual
+        self.assertEqual(ed.writes, 0)
+        self.assertEqual(ed.text_, "public class test\n{\n}")
+
+    def test_the_session_builds_one_class_with_one_main(self):
+        ed = FakeEditor("", 0, title="test - java")
+        cm = codemode.CodeMode()
+        say(cm, ed, "Create a class called Test.")
+        say(cm, ed, "Public static void main.")
+        say(cm, ed, "I want public static void main inside the class test.")
+        self.assertEqual(say(cm, ed, "Move inside the main class or main method."), "In main.")
+        self.assertEqual(say(cm, ed, "Move the cursor inside the main method."), "In main.")
+        say(cm, ed, "Initialize variable i is equal to 0.")
+        self.assertEqual(say(cm, ed, "Wrap this inside class test inside main method."), "That's already inside main.")
+        say(cm, ed, "Now write a for loop where i is equal to 0, i is less than 10, i++.")
+        say(cm, ed, "System. out. print IE")
+        self.assertEqual(say(cm, ed, "Control plus A."), "Selected everything.")
+        code = ed.text_
+        self.assertEqual(code.count("class"), 1)
+        self.assertEqual(code.count("void main"), 1)
+        self.assertIn("int i = 0;", code)
+        self.assertIn("for (i = 0; i < 10; i++)", code)
+        self.assertIn('System.out.print("IE");', code)
+        if codecheck.available("java"):
+            self.assertEqual(codecheck.errors(code, "java"), ())
