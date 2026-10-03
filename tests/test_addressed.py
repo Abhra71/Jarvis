@@ -78,7 +78,7 @@ class BackgroundTest(unittest.TestCase):
         """Regression: nothing the user said in a logged session (with the hearing it really had) is dropped,
         except the 1 Oct room talk."""
         room = {t for t, _ in ROOM_TALK + SONG + NOISE}
-        for f in sorted((ROOT / "logs").glob("tasks-*.jsonl")):
+        for f in sorted((ROOT / "logs").rglob("tasks-*.jsonl")):  # old days are kept in logs/archive-*
             if f.name > "tasks-2026-10-02.jsonl":
                 continue  # a fixed set: later days may hold new background talk (add it to the lists above)
             for line in f.read_text(encoding="utf-8").splitlines():
