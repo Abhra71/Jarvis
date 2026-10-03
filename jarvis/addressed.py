@@ -37,6 +37,7 @@ _COMMAND = re.compile(
 _ACTION = re.compile(r"\b(open|close|search|click|type|select|delete|remove|send|cut|copy|paste|press|scroll|"
                      r"upload|download|minimi[sz]e|maximi[sz]e|mute|compile|apply|fill)\b", re.I)
 _FILLER = re.compile(r"^(?:(?:so|and|then|now|okay|ok|um|uh|well|also|just|actually)[, ]+)+", re.I)
+_FILLERS = {"and", "so", "but", "or", "um", "uh", "hmm", "mm", "the", "a", "an", "oh", "ah", "huh", "then"}
 _SENTENCE = re.compile(r"[^.!?]+[.!?]*")
 _WORD = re.compile(r"[A-Za-z']+")
 
@@ -59,11 +60,18 @@ def _tokenizer():
     return None
 
 
+@functools.lru_cache(maxsize=1)
+def _known() -> frozenset:
+    """The user's own names from the hearing hint ("Khazana", "Rockerz", "BlueJ"): words, though not English."""
+    from .stt import HINT
+    return frozenset(w.lower() for w in _WORD.findall(HINT))
+
+
 @functools.lru_cache(maxsize=4096)
 def is_odd_word(word: str, pieces: int = 3) -> bool:
     """Not an English word: three or more pieces of Whisper's vocabulary ("Bhaari", "Smebote")."""
     tok = _tokenizer()
-    if tok is None:
+    if tok is None or word.lower() in _known():
         return False
     return min(len(tok.encode(" " + w, add_special_tokens=False).ids) for w in (word, word.lower())) >= pieces
 
@@ -83,11 +91,22 @@ def background_reason(text: str, confidence: float | None = None, followup: bool
     chunks = [c.strip() for c in re.split(r"[,.;!?]", text) if c.strip()]
     if len(chunks) >= LIST_CHUNKS and sum(len(c.split()) <= 2 for c in chunks) >= 0.7 * len(chunks):
         return "a list of scraps, not a request"
-    if not followup or confidence is None or confidence >= VERY_UNSURE:
+    keys = [c.lower() for c in chunks]
+    if len(keys) >= 4 and max(map(keys.count, keys)) >= 0.75 * len(keys):
+        return "the same scrap over and over"  # "Xp, Xp, Xp, Xp, Xp." (3 Oct, a lofi song)
+    if _WORD.findall(text) and all(w.lower() in _FILLERS for w in _WORD.findall(text)):
+        return "only filler words"  # "And..."
+    if not followup or confidence is None:
         return None
-    if confidence < LOST and len(_WORD.findall(text)) >= 15 and not text.rstrip().endswith("?") \
-            and not _ACTION.search(text):
-        return "long, unclear, and asks for nothing"
+    all_words = _WORD.findall(text)
+    if confidence < -0.5 and 2 <= len(all_words) <= 4 and all(is_odd_word(w, 2) for w in all_words):
+        return "not English"  # "Wapj, Oken."
+    if confidence >= VERY_UNSURE:
+        return None
+    if confidence < LOST and not text.rstrip().endswith("?") and not _ACTION.search(text):
+        # Whisper was guessing hard, and no sentence asks for anything: someone else's talk or a song
+        # ("I will come to the workshop alone…" on 1 Oct; "and Mundo Pocket 1v8, so this." on 3 Oct).
+        return "unclear, and asks for nothing"
     if len(words) == 1 and len(text.split()) == 1 and is_odd_word(words[0], 2):
         return "one unclear word"  # "Graho." heard in the same room talk
     return None

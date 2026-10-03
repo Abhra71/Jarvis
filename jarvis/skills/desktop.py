@@ -121,6 +121,38 @@ def _focus(hwnd):
     time.sleep(STEP_PAUSE)
 
 
+# The window Jarvis opened last: (hwnd, name, when). "Close it" right after means that window (3 Oct).
+just_opened: tuple[int, str, float] | None = None
+
+
+def front_hwnd() -> int:
+    return win32gui.GetForegroundWindow()
+
+
+def note_opened(hwnd: int, name: str):
+    global just_opened
+    just_opened = (hwnd, name, time.monotonic())
+
+
+def close_just_opened(max_age: float = 120) -> str | None:
+    """Close the window Jarvis just opened, or None when there isn't one (any more)."""
+    global just_opened
+    if not just_opened:
+        return None
+    hwnd, name, when = just_opened
+    if time.monotonic() - when > max_age or not win32gui.IsWindow(hwnd):
+        just_opened = None
+        return None
+    just_opened = None
+    win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        time.sleep(0.1)
+        if not win32gui.IsWindow(hwnd) or not win32gui.IsWindowVisible(hwnd):
+            return f"Closed {name}."
+    return f"Not done: {name} didn't close."
+
+
 def _pretty(w) -> str:
     return w[1].removesuffix(".exe").capitalize() if w[1] else w[2]
 

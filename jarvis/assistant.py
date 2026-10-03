@@ -70,6 +70,8 @@ _NOT_CODE = re.compile(r"(open|close|play|pause|resume|volume|mute|unmute|search
                        r"click|can you|could you|please|i want you|delete|remove|clear|is |are |did |do you|move|"
                        r"create a (new )?class|make a (new )?class|new class)\b")
 
+_CLOSE_IT = re.compile(r"(?:(?:ok(?:ay)?|now|and|then|please),? )*(?:close|shut) (?:it|that|this|this one|that one|"
+                       r"this window|that window|this folder|that folder|the folder)(?: now)?(?: please)?")
 _PLAY = re.compile(r"\b(play|listen to|put on|watch|resume)\b", re.I)
 _YES_WORD = re.compile(r"\s*(yes|yeah|yep|yup|sure|ok|okay|right|correct|exactly|haan|ha)\b", re.I)
 _STOP = re.compile(r"(stop|cancel|never ?mind|forget it|leave it|that'?s all|nothing|no|nope|nah|no thanks|"
@@ -182,12 +184,15 @@ class Assistant:
         corr = getattr(self, "corrections", None)
         if corr:
             text = corr.apply(text)  # mishearings the user corrected before ("Clawed" -> "Claude")
+        opened_before = desktop.just_opened
         try:
             route, reply = self._handle(text, unsure)
         except mouse.UserTookOver:
             route, reply = "stopped", "You moved the mouse, so I stopped."
         except mouse.Cancelled:
             route, reply = "stopped", "Stopped."
+        if desktop.just_opened is opened_before:
+            desktop.just_opened = None  # "close it" means what was opened by the request just before, only
         reply = redact_secrets(reply)
         usage.end_turn(route, reply)
         log.info("Handled by %s", route)
@@ -279,6 +284,11 @@ class Assistant:
                 agent.question = None
             # 30 Sep: a bare "no" after a question was planned as a new request (it asked about Send again).
             return "offline rules", "Okay." if re.match(r"(no|nope|nah|don)", text.lower().strip()) else "Okay, stopped."
+        if _CLOSE_IT.fullmatch(spoken) and desktop.just_opened:
+            # "Open downloads." "Close it.": the window just opened, in code (3 Oct: the AI closed a Chrome tab).
+            closed = desktop.close_just_opened()
+            if closed:
+                return "offline rules", closed
         if _PLAY.search(text) and volume.others_muted():
             # Asked to play something while apps are muted (by an earlier "mute", maybe days ago): unmute first,
             # on every path (the site packs play YouTube without reaching the AI's check).

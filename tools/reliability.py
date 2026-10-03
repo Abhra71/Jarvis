@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-# (label, what's said, how long to wait after it for the next one)
+# (label, what's said, how long to wait after it for the next one[, a setup step run first, in code])
 ROUND = [
     ("youtube lofi full screen", "Play lofi on YouTube and make it full screen", 4),
     ("pause/back 30/subtitles", "Pause, go back 30 seconds, and turn on subtitles", 1),
@@ -30,7 +30,38 @@ ROUND = [
     ("what's on my screen", "What's on my screen?", 1),
     ("PW batch chemistry", "Open Physics Wallah, my batch, chemistry", 1),
     ("Khazana chemistry", "Open Khazana chemistry", 1),
+    # Added 3 Oct (Block 1): the 1 Oct batch, live-tested.
+    ("open downloads", "Open downloads", 1),
+    ("close it (folder)", "close it", 1),
+    ("open screenshots", "Open my screenshots folder", 1),
+    ("close this (folder)", "close this", 1),
+    ("open chess.com", "Open chess.com", 2),
+    ("open wikipedia", "Open wikipedia.org", 2),
+    ("close this + chess tab", "close this tab and close the chess tab as well", 1),
+    ("volume 30", "Set the volume to 30", 1),
+    ("clawed = claude", "Open Clawed", 1),
+    ("bluej new class", "create a new class called {cls}", 1, "bluej_scratch"),
 ]
+# What a right answer must mention: a wrong action can still sound like success (3 Oct: "close it" after
+# "open downloads" closed a Physics Wallah tab, and passed).
+EXPECT = {"open downloads": "download", "close it (folder)": "download", "open screenshots": "screenshot",
+          "close this (folder)": "screenshot", "close this + chess tab": "chess", "clawed = claude": "claude",
+          "bluej new class": "created the class", "volume 30": "30"}
+CLASSES = ["Circle", "Square", "Triangle", "Oval", "Star", "Cube", "Cone", "Prism", "Ring", "Arc"]
+SCRATCH_PROJECT = "JarvisScratch"  # a BlueJ project made for tests; never the user's own projects
+
+
+def bluej_scratch() -> str | None:
+    """Bring the scratch BlueJ project to the front, or say why the task can't run."""
+    from jarvis.skills import desktop
+    for hwnd, proc, title in desktop._app_windows():
+        if proc.startswith("java") and title.split(":", 1)[-1].strip() == SCRATCH_PROJECT:
+            desktop._focus(hwnd)
+            time.sleep(0.5)
+            return None
+    return f"skipped: open the BlueJ project {SCRATCH_PROJECT} first"
+
+
 FAILED = ("not done", "i'm stuck", "couldn't confirm", "what should i do", "can't tell if it worked", "i couldn't", "sorry", "didn't work", "not clicked")
 
 
@@ -51,11 +82,19 @@ def main():
     brightness = quick.brightness()
     a = Assistant(load_config())
     out = ROOT / "logs" / "reliability.jsonl"
-    stats: dict[str, list] = {label: [] for label, _, _ in ROUND}
+    stats: dict[str, list] = {t[0]: [] for t in ROUND}
+    from jarvis.skills import volume
+    level = volume.get_volume() if hasattr(volume, "get_volume") else None
     try:
         for r in range(1, rounds + 1):
             print(f"\n=== round {r}/{rounds} ===", flush=True)
-            for label, said, pause in ROUND:
+            for label, said, pause, *setup in ROUND:
+                said = said.format(cls=CLASSES[(r - 1) % len(CLASSES)] + ("" if r <= len(CLASSES) else str(r)))
+                if setup:
+                    why = globals()[setup[0]]()
+                    if why:
+                        print(f"  SKIP {label:26} {why}", flush=True)
+                        continue
                 t0 = time.monotonic()
                 try:
                     reply = a.handle_text(said)
@@ -67,7 +106,7 @@ def main():
                     reply = a.handle_text("close it")
                 took = time.monotonic() - t0
                 last = a.brain.agent.last if a.brain.agent else None
-                ok = not any(f in reply.lower() for f in FAILED)
+                ok = not any(f in reply.lower() for f in FAILED) and EXPECT.get(label, "") in reply.lower()
                 stats[label].append((ok, took))
                 print(f"  {'PASS' if ok else 'FAIL'} {label:26} {took:5.1f}s  {reply[:110]}", flush=True)
                 with out.open("a", encoding="utf-8") as f:
@@ -77,6 +116,8 @@ def main():
                 time.sleep(pause)
     finally:
         quick.set_switch("night light", False)
+        if level is not None:
+            volume.set_volume(level)
         if brightness is not None:
             quick.set_brightness(brightness)
     print("\n=== summary ===")

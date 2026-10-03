@@ -54,7 +54,7 @@ class CatalogTest(unittest.TestCase):
                     self.assertTrue(takes)
 
     def test_open_folder_runs_with_its_folder(self):
-        with mock.patch.object(abilities.files.files, "open_path", side_effect=lambda p: f"Opened {p}.") as op:
+        with mock.patch.object(abilities.files.files, "open_path", side_effect=lambda p: f"Opened {p}.") as op,                 mock.patch.object(abilities.files.desktop, "_app_windows", return_value=[]),                 mock.patch.object(abilities.files.time, "monotonic", side_effect=[0, 5]):
             self.assertEqual(abilities.handle("Open downloads"), "Opened downloads.")
         op.assert_called_once_with("downloads")
 

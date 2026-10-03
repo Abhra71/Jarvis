@@ -25,6 +25,15 @@ ROOM_TALK = [
      "Mnuchut, Tehri, Karne, Tere Vener, Faribol, Topic, Vitae, Rane, Pen, Pen, Tare, Pappe, Pappe, Naut, Hale.", -0.27),
     ("Graho.", -1.0),
 ]
+NOISE = [("Tx.", -1.63)]  # 30 Sep, nothing was said
+# 3 Oct: a lofi song on YouTube woke Jarvis (wake score 0.94) and its words were heard as requests.
+SONG = [
+    ("Moteur, Mnexia, Qoo, Mando, Gim, Dabu, Tadli, Tud.", -1.55),
+    ("and Mundo Pocket 1v8, so this.", -1.31),
+    ("And...", -0.35),
+    ("Wapj, Oken.", -0.66),
+    ("Xp, Xp, Xp, Xp, Xp.", -0.31),
+]
 
 # The user's real requests, including names that aren't English words and badly heard ones.
 REQUESTS = [
@@ -35,7 +44,7 @@ REQUESTS = [
     ("Open Clawd.", -0.7),
     ("Flipkart.", -0.4),
     ("Do you know Ranveer Singh?", -0.3),
-    ("KMS 3, Khazana 2026.", -0.5),
+    ("KMS 3, Khazana 2026.", -0.74),
     ("Whatever is there in the address bar, Cut it and Open Claude App.", -1.3),
     ("Curser and click on the placeholder which is named search for products brands and more.", -1.3),
     ("Apply all the coupons which is named here from Google Pay and Access Phone Pay Beam.", -1.3),
@@ -51,6 +60,11 @@ class BackgroundTest(unittest.TestCase):
             with self.subTest(text=text[:40]):
                 self.assertIsNotNone(addressed.background_reason(text, conf, followup=True))
 
+    def test_the_song_of_3_oct_is_ignored(self):
+        for text, conf in SONG:
+            with self.subTest(text=text):
+                self.assertIsNotNone(addressed.background_reason(text, conf, followup=True))
+
     def test_real_requests_get_through(self):
         for text, conf in REQUESTS:
             with self.subTest(text=text):
@@ -63,8 +77,10 @@ class BackgroundTest(unittest.TestCase):
     def test_every_real_sentence_ever_said_with_its_real_confidence(self):
         """Regression: nothing the user said in a logged session (with the hearing it really had) is dropped,
         except the 1 Oct room talk."""
-        room = {t for t, _ in ROOM_TALK}
+        room = {t for t, _ in ROOM_TALK + SONG + NOISE}
         for f in sorted((ROOT / "logs").glob("tasks-*.jsonl")):
+            if f.name > "tasks-2026-10-02.jsonl":
+                continue  # a fixed set: later days may hold new background talk (add it to the lists above)
             for line in f.read_text(encoding="utf-8").splitlines():
                 e = json.loads(line)
                 conf = (e.get("hearing") or {}).get("confidence")

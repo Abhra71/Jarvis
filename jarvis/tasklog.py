@@ -107,7 +107,10 @@ def summary(entries: list[dict]) -> dict:
     for e in entries:
         counts[e.get("result", "?")] = counts.get(e.get("result", "?"), 0) + 1
     secs = sorted(e.get("seconds", 0) for e in entries if e.get("result") != "ignored")
-    wrong = [e for e in entries if e.get("result") in ("stuck", "failed", "unconfirmed")]
+    from .agent import speech
+    # The review shows each reason in plain words, not the note written for the AI ("the dialog box 'Infobar'…").
+    wrong = [{**e, "why": speech.problem(e["why"]) if e.get("why") else ""} for e in entries
+             if e.get("result") in ("stuck", "failed", "unconfirmed")]
     real = [e for e in entries if e.get("result") != "ignored"]
     return {"total": len(real), "counts": counts,
             "median_seconds": secs[len(secs) // 2] if secs else None,

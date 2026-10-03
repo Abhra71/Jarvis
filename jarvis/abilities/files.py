@@ -223,4 +223,20 @@ def open_folder(value: str):
     """1 Oct speed report: 'Open downloads.' went to the AI (2 calls, 6 s). A folder the user names is instant."""
     name = {"download": "downloads", "document": "documents", "picture": "pictures", "photos": "pictures",
             "screenshots": _screenshots()}.get(value, value)
-    return files.open_path(name)
+    reply = files.open_path(name)
+    if not reply.startswith("Opened "):
+        return f"Not done: {reply}"
+    # 3 Oct reliability run: the folder opened behind Chrome, so "close it" closed a Chrome tab. Bring it to the
+    # front and remember it, so "close it" next means this window.
+    folder = files.resolve(name).name.lower()
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        w = next((w for w in desktop._app_windows() if w[1] == "explorer.exe"
+                  and w[2].lower().startswith(folder + " ")), None)
+        if w:
+            if desktop.front_hwnd() != w[0]:
+                desktop._focus(w[0])
+            desktop.note_opened(w[0], f"the {files.resolve(name).name} folder")
+            break
+        time.sleep(0.15)
+    return reply
