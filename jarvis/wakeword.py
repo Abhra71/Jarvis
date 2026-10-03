@@ -1,4 +1,4 @@
-"""'Hey Jarvis' detection with openWakeWord (free, offline)."""
+"""'Hi Jarvis' detection with openWakeWord (free, offline)."""
 
 import logging
 import sys

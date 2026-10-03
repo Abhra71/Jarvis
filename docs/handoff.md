@@ -159,6 +159,8 @@ Full plan: ~/.claude/plans/yea-agent-industry-grade-adaptive-lampson.md. The use
 **Release order (the user, 3 Oct; memory `jarvis-release-order`):** Block 4 trial → fixes → Blocks 5-7 → only when
 the feel is near 100%: the full beta (wizard, own keys + guide, terminal install, consent, scrubbed reports) →
 tested on the user's second laptop → then friends. Plan: ~/.claude/plans/try-again-tidy-creek.md.
+**Beta, personalization and self-learning spec (the user, 3 Oct): `docs/beta-plan.md`** (GUI wizard after a
+terminal install, the welcome survey, learning a new person, recipes: AI once then code). Wake word is now "Hi Jarvis".
 **Block 4: Trial** (2–3 days) and review. **Block 5:** Phase 5 rest (site notes, daily self-review).
 **Block 6:** Hardening. **Block 7:** Chess mode (vision board, voice moves, a mode switch). **Block 8:** the beta,
 then the EXE (see the release order).

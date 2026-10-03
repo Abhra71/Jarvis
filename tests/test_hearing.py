@@ -71,3 +71,15 @@ class HearingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GreetingTest(unittest.TestCase):
+    """3 Oct: the wake phrase is "Hi Jarvis"; heard again at the start, it must not hide the command from the code."""
+
+    def test_the_wake_phrase_is_dropped_from_the_request(self):
+        from jarvis.stt import strip_greeting
+        for said in ("Hi Jarvis, open Chrome", "High Jarvis, open Chrome", "Hi, Jarvis. open Chrome",
+                     "Hey Jarvis open Chrome", "hai jarvis, open Chrome"):
+            self.assertEqual(strip_greeting(said), "open Chrome", said)
+        self.assertEqual(strip_greeting("Hi Jarvis."), "Hi Jarvis.")  # nothing after it: kept
+        self.assertEqual(strip_greeting("Jarvis is a film"), "Jarvis is a film")

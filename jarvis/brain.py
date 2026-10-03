@@ -464,7 +464,7 @@ class Brain:
             log.info("User moved the mouse; stopped")  # the partial turn is already closed in history
             return "You moved the mouse, so I stopped."
         except mouse.Cancelled:
-            log.info("User said Hey Jarvis mid-task; stopped")
+            log.info("User said Hi Jarvis mid-task; stopped")
             return "Stopped."
         finally:
             self.skills.confirmed = False

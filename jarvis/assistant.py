@@ -74,7 +74,7 @@ _HALLUCINATIONS = {"", "you", "thank you", "thanks for watching", "bye", "okay",
 
 class State(Enum):
     LOADING = "Loading..."
-    IDLE = "Waiting for 'Hey Jarvis'"
+    IDLE = "Waiting for 'Hi Jarvis'"
     LISTENING = "Listening"
     THINKING = "Thinking"
     LOOKING = "Looking at your screen"
@@ -103,7 +103,7 @@ class Assistant:
         self.wake = None
         self.dictating = False
         self.coding = False  # coding mode: speech -> code in BlueJ / VS Code
-        self.gaming = False  # gaming mode: "Hey Jarvis" for every command (game sounds aren't commands)
+        self.gaming = False  # gaming mode: "Hi Jarvis" for every command (game sounds aren't commands)
         self.heard: dict | None = None  # how the current sentence was heard (for the task log)
         self.corrections = corrections.Corrections()  # "No, I meant Claude": fixed now, and remembered
         self.last_request = ""  # the last request handled (what a correction corrects)
@@ -211,7 +211,7 @@ class Assistant:
             return route, reply
         if _GAMING_ON.fullmatch(spoken):
             self.gaming = True
-            return "gaming", ("Gaming mode on. Say Hey Jarvis before each command. Start eFootball, close the game, "
+            return "gaming", ("Gaming mode on. Say Hi Jarvis before each command. Start eFootball, close the game, "
                               "maximize or minimize work as usual.")
         if _GAMING_OFF.fullmatch(spoken):
             self.gaming = False
@@ -425,7 +425,7 @@ class Assistant:
             log.exception("Turn failed")
             self.speaker.say("Sorry, something went wrong.")
 
-        # Falling chime = "I've stopped listening; say Hey Jarvis to start again".
+        # Falling chime = "I've stopped listening; say Hi Jarvis to start again".
         self.speaker.chime("sleep")
         # Forget everything heard while busy so Jarvis doesn't wake itself up.
         self.mic.drain()
@@ -451,7 +451,7 @@ class Assistant:
                 volume.restore(saved)
             if audio is None:
                 self.stt.close()  # nobody spoke: free the GPU now, not after the helper's wait
-                if self.dictating:  # a long quiet spell ends dictation: the next "Hey Jarvis" is a command again
+                if self.dictating:  # a long quiet spell ends dictation: the next "Hi Jarvis" is a command again
                     self.dictating = False
                     log.info("Dictation off (quiet for %s s)", DICTATION_SILENCE)
                 return  # silence: the caller plays the "back to sleep" chime
@@ -487,7 +487,7 @@ class Assistant:
                 self.speaker.say(_NOT_DONE.sub("", reply))  # "Not done: X didn't connect." is said as a person would
 
             if self.skills.cancel.is_set():
-                # "Hey Jarvis" while busy: stopped, now take the new command with a full listening window.
+                # "Hi Jarvis" while busy: stopped, now take the new command with a full listening window.
                 self.skills.cancel.clear()
                 self.mic.drain()
                 self._set(State.LISTENING)
@@ -503,7 +503,7 @@ class Assistant:
             self._set(State.LISTENING)
 
     def _handle_while_watching(self, text: str, unsure: bool = False) -> str:
-        """Run the request, while a side thread keeps listening for "Hey Jarvis" so you can interrupt."""
+        """Run the request, while a side thread keeps listening for "Hi Jarvis" so you can interrupt."""
         done = threading.Event()
 
         def watch():

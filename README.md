@@ -1,7 +1,7 @@
 # Jarvis v2
 
-Background voice assistant for Windows. Say **"Hey Jarvis"**, wait for the beep, then just talk.
-After it answers, you have ~5 seconds to say something else without "Hey Jarvis" again.
+Background voice assistant for Windows. Say **"Hi Jarvis"**, wait for the beep, then just talk.
+After it answers, you have ~5 seconds to say something else without "Hi Jarvis" again.
 
 ## How it decides what to do
 
@@ -41,7 +41,7 @@ run_console.bat                  # same, but with live logs in a window
 .venv\Scripts\python -m unittest discover tests  # run tests
 ```
 
-Tray icon colours: blue = waiting for "Hey Jarvis", green = listening, orange = thinking,
+Tray icon colours: blue = waiting for "Hi Jarvis", green = listening, orange = thinking,
 **purple = looking at your screen (screenshot)**, pink = moving your mouse, cyan = speaking, grey = paused,
 red = error (see `logs/jarvis.log`). Right-click the icon to pause or quit.
 
@@ -77,7 +77,7 @@ jarvis/
   brain.py       Gemini REST client: tool-calling loop, short replies, conversation memory
   nlu.py         offline rules: text -> Intent
   audio.py       mic stream (sounddevice) + end-of-speech detection (webrtcvad)
-  wakeword.py    "hey jarvis" via openWakeWord
+  wakeword.py    "hi jarvis" via openWakeWord
   stt.py         faster-whisper, offline
   skills/
     __init__.py  the tool list shared by rules and Gemini

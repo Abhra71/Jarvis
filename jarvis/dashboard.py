@@ -84,7 +84,7 @@ async function tick(){
   try{
     const s=await (await fetch("status.json",{cache:"no-store"})).json();
     document.getElementById("sub").textContent=`${s.day} · updated ${s.now} · only visible on this PC`;
-    const act=s.activity||"idle";document.getElementById("activity").textContent=act==="idle"?"Idle (waiting for “Hey Jarvis”)":act[0].toUpperCase()+act.slice(1);
+    const act=s.activity||"idle";document.getElementById("activity").textContent=act==="idle"?"Idle (waiting for “Hi Jarvis”)":act[0].toUpperCase()+act.slice(1);
     const dot=document.getElementById("dot");dot.className="dot "+(act==="idle"?"idle":act.includes("screen")?"look":"busy");
     const next=s.order.find(k=>{const m=s.models.find(x=>x.key===k);return !m||!m.state.startsWith("limit")});
     document.getElementById("next").textContent=next?next.replace(":"," · "):"all models at their limit";

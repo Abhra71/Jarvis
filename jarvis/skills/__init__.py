@@ -202,7 +202,7 @@ class Skills:
         self.browser = Browser(config.get("chrome_profiles", {}))
         self.timers = Timers(announce)
         self.calls_made = 0  # lets the assistant tell whether the AI already did something this turn
-        self.cancel = threading.Event()  # set when the user says "Hey Jarvis" mid-task: stop at the next step
+        self.cancel = threading.Event()  # set when the user says "Hi Jarvis" mid-task: stop at the next step
         self.confirmed = False  # the user just said "yes" to Jarvis's question: risky actions allowed this turn
         self.screen_fresh = False  # a screenshot was taken and nothing has changed the screen since
         self._element: elements.Element | None = None  # what click_element is about to click

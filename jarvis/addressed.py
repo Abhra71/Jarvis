@@ -7,7 +7,7 @@ clarify…". The signs, all checked in code with no AI:
 - **Not English.** Whisper is told the speech is English, so other languages come out as made-up words. A real
   English word is one piece of Whisper's own vocabulary; "Bhaari" or "Smebote" take three or more pieces.
 - **A list of short scraps** ("Kais, Kuch Nei, Xtos, Vier, Blach, Plox, Plox, …"): nobody gives a command that way.
-- **Long, unsure, and no sentence asks for anything**, in a follow-up (no "Hey Jarvis" just before it).
+- **Long, unsure, and no sentence asks for anything**, in a follow-up (no "Hi Jarvis" just before it).
 
 A command word at the start of a sentence ("Search for Best Biryani in Kolkata") always keeps it: names and
 places are often not English words. Dictation is never filtered.

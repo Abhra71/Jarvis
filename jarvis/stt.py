@@ -49,7 +49,18 @@ def clean_transcript(text: str) -> str:
         log.info("Ignoring %r: the same phrase repeated is a speech-recognition glitch", text)
         return ""
     kept = [s for i, s in enumerate(sentences) if i == 0 or keys[i] != keys[i - 1]]
-    return " ".join(kept)
+    return strip_greeting(" ".join(kept))
+
+
+# The wake phrase heard again at the start of the request ("Hi Jarvis, open Chrome"): the code's own fillers only
+# knew "hey jarvis", so after the wake word became "Hi Jarvis" (3 Oct) every such request went to the AI.
+_GREETING = re.compile(r"^\s*(?:hey|hi|high|hai|hay|hiya|hello|ok|okay)[\s,.!]*jarvis\b[\s,.!?]*", re.I)
+
+
+def strip_greeting(text: str) -> str:
+    """'Hi Jarvis, open Chrome' -> 'open Chrome'. A greeting with nothing after it is kept as it was."""
+    rest = _GREETING.sub("", text)
+    return rest if rest.strip(" .!?,") else text
 
 
 class GpuHearing:
@@ -68,7 +79,7 @@ class GpuHearing:
         return self.proc is not None and self.proc.poll() is None
 
     def start(self):
-        """Called on "Hey Jarvis": load the model while Jarvis answers and you start talking."""
+        """Called on "Hi Jarvis": load the model while Jarvis answers and you start talking."""
         with self.lock:
             if self.alive() or self.failed:
                 return

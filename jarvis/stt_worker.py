@@ -1,7 +1,7 @@
 """Speech-to-text on the GPU, in its own process, only during a conversation.
 
 The user's rule (27 Sep): GPU memory may be used only while they're talking to Jarvis, never
-continuously. So Jarvis starts this process when it hears "Hey Jarvis" (stt.py), and the process
+continuously. So Jarvis starts this process when it hears "Hi Jarvis" (stt.py), and the process
 exits by itself after `idle` seconds without a request. Only a process exit gives the GPU memory
 back completely: NVIDIA's own context (~90 MB) stays until the process ends.
 

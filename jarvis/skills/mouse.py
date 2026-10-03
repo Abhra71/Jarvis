@@ -27,7 +27,7 @@ class UserTookOver(Exception):
 
 
 class Cancelled(Exception):
-    """The user said "Hey Jarvis" while Jarvis was busy: stop at the next step."""
+    """The user said "Hi Jarvis" while Jarvis was busy: stop at the next step."""
 
 
 class _Point(ctypes.Structure):

@@ -5,7 +5,7 @@ sample_rate = 16000          # openWakeWord and Whisper both expect 16 kHz mono
 input_device = ""            # "" = Windows default mic, or part of the device name (see: python -m jarvis --list-devices)
 
 [wakeword]
-model = "hey_jarvis"
+model = "hey_jarvis"         # the pretrained model listens for "Jarvis": "Hi Jarvis" scores 1.00 (3 Oct test)
 threshold = 0.5              # raise (e.g. 0.7) if it triggers by itself, lower if it misses you
 cooldown_seconds = 2.0
 
@@ -14,7 +14,7 @@ max_seconds = 15.0           # hard cap on one command (it still stops as soon a
 silence_seconds = 0.8        # stop recording after this much silence once you've started talking
 no_speech_timeout = 4.0      # give up if you say nothing after the wake word
 vad_aggressiveness = 2       # 0-3, higher = more strict about what counts as speech
-followup_seconds = 5         # after answering, keep listening this long without "Hey Jarvis" (0 = off)
+followup_seconds = 5         # after answering, keep listening this long without "Hi Jarvis" (0 = off)
 
 [ai]
 # v3 (26 Sep): Groq + Gemini only. See docs/ai-provider-report.md.
@@ -47,7 +47,7 @@ hedge_model = "gemini-3.1-flash-lite"
 [stt]
 model = "base.en"            # on the CPU: the fallback, and the whole thing if there's no NVIDIA GPU
 compute_type = "int8"
-# The better model on the GPU, but only during a conversation: it loads on "Hey Jarvis" and its process
+# The better model on the GPU, but only during a conversation: it loads on "Hi Jarvis" and its process
 # exits after gpu_idle_seconds of quiet, so the GPU is completely free while Jarvis just waits (user's rule).
 # Measured 30 Sep (tools/stt_eval.py, 112 clips incl. the user's misheard sentences and music): small.en GPU 5.9% clean,
 # 8.9% with ducked music, 0.26 s, 357 MB, loads in ~3.5 s; large-v3-turbo 8.3% / 11.9%, 0.69 s, 1 GB, loads in ~7 s
@@ -64,7 +64,7 @@ gpu_load_wait = 4.0          # a finished sentence waits this long for the GPU m
 engine = "edge"              # "edge" (natural, needs internet) / "offline" (pyttsx3) / "beep"
 voice = "en-GB-RyanNeural"   # try en-US-GuyNeural, en-IN-PrabhatNeural, en-US-AriaNeural
 rate = "+5%"
-wake_reply = "Yes, my lord?"  # said when it hears "Hey Jarvis" ("" = soft chime instead). Stopping always plays a soft chime.
+wake_reply = "Yes, my lord?"  # said when it hears "Hi Jarvis" ("" = soft chime instead). Stopping always plays a soft chime.
 
 [volume]
 step = 10                    # percent for "volume up" / "volume down"

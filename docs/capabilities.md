@@ -12,9 +12,9 @@ Updated 27 Sep 2026 (after Jarvis 4 phase 1).
 ## 1. Speaking to Jarvis
 | Ability | Example | Status | AI |
 |---|---|---|---|
-| Wake word | "Hey Jarvis" | works | 0 AI |
+| Wake word | "Hi Jarvis" | works | 0 AI |
 | Follow-up without the wake word | answer within 5 s | works | 0 AI |
-| Stop mid-task | "Hey Jarvis" while it works | works | 0 AI |
+| Stop mid-task | "Hi Jarvis" while it works | works | 0 AI |
 | Understanding speech | anything | works (not yet checked live): small.en on the GPU during conversations, 4.9% word errors on test clips (was 15.7%), 0.25 s | 0 AI |
 | Dictation mode | "start dictation … new line … stop dictation" | missing | 0 AI |
 
