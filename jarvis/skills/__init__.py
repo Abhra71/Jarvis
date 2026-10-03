@@ -508,7 +508,7 @@ class Skills:
             case "mute":
                 return self.call("volume", {"action": "mute" if s["on"] else "unmute"})
             case "web_search":
-                return self.call("web_search", {"query": s["query"]})
+                return self.call("web_search", {"query": s["query"], **({"site": s["site"]} if s.get("site") else {})})
             case "set_timer":
                 return self.timers.start(s["seconds"])  # may be None: asks "how long?"
             case "cancel_timer":

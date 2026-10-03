@@ -590,10 +590,10 @@ class RoutingTest(unittest.TestCase):
             "open youtube": "rules",
             "open the third account": "rules",
             "open chrome work profile": "rules",
-            "search for python tutorials": "ai",
+            "search for python tutorials": "rules",  # 3 Oct: a plain search is an address, instant
             "search for youtube here": "ai",
             "open youtube in my work profile": "ai",
-            "search lofi music on youtube": "ai",
+            "search lofi music on youtube": "rules",
             "open a new tab": "rules",  # one shortcut (ctrl+t), no AI
             "close chrome": "ai",
             "what's the capital of peru": "ai",

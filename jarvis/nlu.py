@@ -191,13 +191,19 @@ def parse(raw: str) -> Intent | None:
         return Intent("shortcut", {"keys": shortcut[0], "reply": shortcut[1]})
 
     # Web search
+    # "search python tutorials on youtube" / "search boots on amazon" (3 Oct: went to the AI, ~2-3 s)
+    m = re.match(r"^(?:search(?: for)?|look up|find)\s+(.+?)\s+(?:on|in)\s+(youtube|amazon|github|google maps|maps)$",
+                 text)
+    if m and not re.search(r"\b(and|then)\b", m.group(1)):
+        return Intent("web_search", {"query": m.group(1), "site": m.group(2).replace("google maps", "maps")})
     m = re.match(r"^(?:search(?: google)?(?: for)?|google|look up)\s+(.+?)(?:\s+on google)?$", text)
     if m:
         return Intent("web_search", {"query": m.group(1)})
 
     # Chrome profile: "open the third account", "open chrome work profile", "switch to my misc profile"
     m = re.match(r"^(?:open|launch|start|switch to)\s+(?:google\s+)?(?:chrome\s+)?(?:(?:in|with|on)\s+)?"
-                 r"(?:the\s+|my\s+)?(.+?)\s+(?:chrome\s+)?(?:profile|account)$", text)
+                 r"(?:the\s+|my\s+)?(.+?)\s+(?:chrome\s+)?(?:profile|account)"
+                 r"(?:\s+(?:in|on|of)\s+(?:google\s+)?chrome)?$", text)  # 3 Oct: "open main profile in chrome"
     if m and not re.search(r"\b(in|on|and|then)\b", m.group(1)):
         return Intent("open_profile", {"profile": m.group(1)})
 

@@ -55,5 +55,23 @@ class KhazanaFastTest(unittest.TestCase):
         home.assert_not_called()
 
 
+class CloseThisAppTest(unittest.TestCase):
+    """3 Oct speed pass: 'close this' with an app in front went to the AI (2-3 s)."""
+
+    def test_an_app_window_is_closed_in_code(self):
+        from jarvis.agent import plan as planmod
+        p = planmod.code_plan("Close this.", "explorer: Downloads - File Explorer")
+        self.assertEqual(p.steps[0].tool, "window")
+        self.assertEqual(p.steps[0].args, {"app": "Downloads - File Explorer", "action": "close"})
+        self.assertIsNotNone(p.steps[0].check)
+
+    def test_editors_and_terminals_are_left_to_the_ai(self):
+        from jarvis.agent import plan as planmod
+        for front in ("code: main.cpp - Visual Studio Code", "notepad: notes.txt - Notepad", "claude: Claude"):
+            with self.subTest(front=front):
+                self.assertIsNone(planmod.code_plan("Close this.", front))
+        self.assertIsNone(planmod.code_plan("Close this tab.", "explorer: Downloads - File Explorer"))
+
+
 if __name__ == "__main__":
     unittest.main()

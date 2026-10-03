@@ -162,6 +162,10 @@ _NOT_APPS = {"it", "this", "that", "this window", "the window", "window", "scree
 
 _CLOSE_THIS = re.compile(r"close (?:this|it|this one|this 1|that|this page|the page|this tab|the current (?:one|tab|page))")
 _BROWSER_APPS = {"chrome", "msedge", "brave", "firefox", "opera"}
+_CLOSE_APP = re.compile(r"close (?:this|it|this one|this 1|that|this window|the window|this app)")
+# Apps where "close this" may mean a file tab or work in progress: the AI asks or picks the tab, not the window.
+_NO_CLOSE = {"code", "devenv", "windowsterminal", "cmd", "powershell", "claude", "vmware", "vmplayer",
+             "virtualboxvm", "winword", "excel", "powerpnt", "notepad"}
 _AS_WELL = re.compile(r"(?: as well| too| also)$")
 _PW = re.compile(r"\b(pw|physics wallah)\b")
 _NOT_PW = re.compile(r"\b(youtube|google|search|video|videos)\b")
@@ -217,6 +221,10 @@ def code_plan(text: str, front: str = "", unsure: bool = False) -> Plan | None:
         if parts and _CLOSE_THIS.fullmatch(parts[0]) and browser.lower() in _BROWSER_APPS and title:
             # "Close this." in a browser = the tab (1 Oct replay: the AI closed the whole Chrome window).
             return Plan([Step("browser", {"action": "close_tab"}, checks.Check("window", title, True))],
+                        source="code")
+        if parts and _CLOSE_APP.fullmatch(parts[0]) and browser and title and browser.lower() not in _NO_CLOSE:
+            # "Close this." with an app in front = that window (3 Oct speed pass: the AI took 2-3 s to say so)
+            return Plan([Step("window", {"app": title, "action": "close"}, checks.Check("window", title, True))],
                         source="code")
         return None
     on_youtube = "youtube" in normalize(text) or youtube.is_front(front)

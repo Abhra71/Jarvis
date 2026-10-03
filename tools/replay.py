@@ -29,7 +29,7 @@ import logging  # noqa: E402
 from jarvis import abilities, addressed, nlu, router  # noqa: E402
 from jarvis.agent import plan as planmod  # noqa: E402
 from jarvis.assistant import (_CODING_OFF, _CODING_ON, _DICTATE_ON, _GAMING_OFF, _GAMING_ON,  # noqa: E402
-                              _NEEDS_AI, _STOP)
+                              _NEEDS_AI, _SEARCH_CONTEXT, _STOP)
 from jarvis.config import load_config  # noqa: E402
 from jarvis.skills import request_parts, site_url  # noqa: E402
 from jarvis.skills.apps import AppLauncher  # noqa: E402
@@ -100,6 +100,9 @@ def route(text: str, unsure: bool, apps: AppLauncher) -> tuple[str, str]:
         if not apps.find(app):
             meant = apps.suggest(app)
             return "AI", f"open_app({app}) -> no such app" + (f"; asks 'did you mean {meant}?'" if meant else "")
+    elif intent and intent.name == "web_search" and not several and not _SEARCH_CONTEXT.search(intent.slots["query"]) \
+            and len(intent.slots["query"].split()) <= 12:
+        return "rules", f"{intent.name}{intent.slots}"
     elif intent and intent.name not in ("web_search",) and not several:
         return "rules", f"{intent.name}{intent.slots}"
     code = planmod.code_plan(cleaned, "", unsure)

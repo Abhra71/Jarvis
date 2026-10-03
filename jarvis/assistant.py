@@ -50,6 +50,8 @@ _STOP = re.compile(r"(stop|cancel|never ?mind|forget it|leave it|that'?s all|not
                    r"(,? (stop|cancel|nothing))*( please)?( jarvis)?")
 
 # Words that make an "open …" / "search …" request too rich for the offline rules.
+_SEARCH_CONTEXT = re.compile(r"\b(it|this|that|these|those|here|there|address bar|search (?:box|bar)|earlier|same|again|"
+                             r"above|below|on (?:the |my )?screen|selected|copied|clipboard)\b")
 _NEEDS_AI = re.compile(r"\b(profile|account|tabs?|window|and|then|close|in my|on my|on youtube|on amazon)\b")
 
 _SECRET_CONTEXT = re.compile(r"\b(code|otp|one[- ]time|password|passcode|pin|verification|cvv|card|account number)\b", re.I)
@@ -121,7 +123,10 @@ class Assistant:
     def _rules_can_handle(self, intent: nlu.Intent, text: str) -> bool:
         """Simple, clear commands run instantly offline; anything fancier goes to Gemini."""
         if intent.name == "web_search":
-            return False  # "search it here", "…in the address bar": the AI handles context far better
+            # "search it here", "…in the address bar": the AI handles context far better. A plain search ("search
+            # python tutorials on youtube") is an address: instant (3 Oct speed pass; it took 2-3 s via the AI).
+            return not _SEARCH_CONTEXT.search(intent.slots["query"]) and len(intent.slots["query"].split()) <= 12 \
+                and len(request_parts(text)) == 1
         if len(request_parts(text)) > 1:
             # 30 Sep: "open YouTube in Brave's browser, mute in Chrome" only muted. Several parts: the agent.
             return False
