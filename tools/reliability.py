@@ -47,8 +47,10 @@ ROUND = [
 EXPECT = {"open downloads": "download", "close it (folder)": "download", "open screenshots": "screenshot",
           "close this (folder)": "screenshot", "close this + chess tab": "chess", "clawed = claude": "claude",
           "bluej new class": "created the class", "volume 30": "30"}
-CLASSES = ["Circle", "Square", "Triangle", "Oval", "Star", "Cube", "Cone", "Prism", "Ring", "Arc"]
-SCRATCH_PROJECT = "JarvisScratch"  # a BlueJ project made for tests; never the user's own projects
+CLASSES = ["Circle", "Square", "Triangle", "Oval", "Star", "Cube", "Cone", "Prism", "Ring", "Arc", "Sphere", "Kite",
+           "Heart", "Moon", "Cloud", "Leaf", "Wave", "Spiral", "Hexagon", "Pentagon"]
+SCRATCH_PROJECT = "JarvisScratch"
+_next = {"cls": CLASSES[0]}  # a BlueJ project made for tests; never the user's own projects
 
 
 def bluej_scratch() -> str | None:
@@ -56,8 +58,14 @@ def bluej_scratch() -> str | None:
     from jarvis.skills import desktop
     for hwnd, proc, title in desktop._app_windows():
         if proc.startswith("java") and title.split(":", 1)[-1].strip() == SCRATCH_PROJECT:
+            from jarvis.skills import editors
             desktop._focus(hwnd)
             time.sleep(0.5)
+            have = {n for n, _ in editors._class_buttons(hwnd)}
+            free = [c for c in CLASSES if c not in have]
+            if not free:
+                return f"skipped: every test class name is used in {SCRATCH_PROJECT}"
+            _next["cls"] = free[0]  # a name from an earlier run would be "already there" (3 Oct)
             return None
     return f"skipped: open the BlueJ project {SCRATCH_PROJECT} first"
 
@@ -89,12 +97,12 @@ def main():
         for r in range(1, rounds + 1):
             print(f"\n=== round {r}/{rounds} ===", flush=True)
             for label, said, pause, *setup in ROUND:
-                said = said.format(cls=CLASSES[(r - 1) % len(CLASSES)] + ("" if r <= len(CLASSES) else str(r)))
                 if setup:
                     why = globals()[setup[0]]()
                     if why:
                         print(f"  SKIP {label:26} {why}", flush=True)
                         continue
+                said = said.format(cls=_next["cls"])
                 t0 = time.monotonic()
                 try:
                     reply = a.handle_text(said)

@@ -8,10 +8,14 @@ Run the **whole PC by voice**: sit back and do ~99% of computer work reliably, f
 - AI is a **luxury** (free Groq + Gemini only). Everyday work runs in code.
 - Never: deleting, secret files (`.env`, keys), typing into VMware/Kali, sending or buying without a spoken yes.
 
-## Where we are (1 Oct)
+## Where we are (3 Oct, after Block 1)
+- Block 1 (trust) done and live-tested: background talk ignored, Share needs a yes, 8 live bugs fixed, the 20-task
+  reliability run at 99%. **Next: Block 2, coding mode.** Dream ~61%, daily-use feel ~36%.
+
+## Where we were (1 Oct)
 - Honest score: agent ~64%, **the dream overall ~60%**, but **daily-use feel ~30-35%** (the user: "I still won't
   use it as an app"). What's missing is trust: fewer confident wrong actions, human replies, speed on failures.
-- ~250 tests pass: `.venv\Scripts\python -m unittest discover tests`. Everything is committed and pushed to `main`.
+- ~265 tests pass: `.venv\Scripts\python -m unittest discover tests`. Everything is committed and pushed to `main`.
 - Commit only when the tests pass (a failed run once got committed: check the last line says OK).
 
 ## Background batch (1 Oct, no screen used; all committed)
@@ -89,15 +93,29 @@ Run the **whole PC by voice**: sit back and do ~99% of computer work reliably, f
 
 ## The plan from 3 Oct: blocks (one new chat per block; say "continue Jarvis: block N")
 Full plan: ~/.claude/plans/yea-agent-industry-grade-adaptive-lampson.md. The user allows full PC use when idle.
-**Block 1: Trust first.** Logs since 1 Oct:
-- Background speech (a Hindi talk or TV, 1 Oct 21:23) went to the AI as 8 requests. Ignore speech not addressed to
-  Jarvis: gibberish or non-English, long with no command verb; after 2 ignored, go back to sleep. Regression tests
-  from `logs/tasks-2026-10-01.jsonl`.
-- "Send it for me" clicked **Share** with no yes (2 Oct 11:51): Share/Send/Post/Submit/Buy clicks need a yes
-  (`_RISKY_CLICK` in `skills/__init__.py`).
-- "Connect Bluetooth to Rockerz 480" got stuck: route it to `connect_bluetooth`.
-- Live-test the 1 Oct batch (Did-you-mean, "No, I meant", close-this-tab, folders, BlueJ new class in a scratch
-  project, review page), then grow `tools/reliability.py` to ~20 tasks and run until it passes 95%.
+**Block 1: Trust first. DONE 3 Oct** (all committed):
+- `jarvis/addressed.py`: speech not said to Jarvis is ignored, silently, and logged as `ignored` (two in a row =
+  back to sleep): not English (words that are 3+ pieces of Whisper's vocabulary; the hint's names count as words),
+  lists of scraps, the same scrap repeated, filler only, and very unsure (< -1.2) with no request. A command word
+  starting a sentence always keeps it. Checked on all 365 heard lines with their real confidence: only noise
+  dropped. Tests: `tests/test_addressed.py` (1 Oct Hindi talk, 3 Oct lofi song that woke Jarvis at score 0.94).
+- Share/Forward/Invite/Accept/Agree/Approve/Unsubscribe clicks need a yes. Device/switch/game/BlueJ-new-class
+  abilities' "Not done" is the answer (`abilities.FINAL`), never handed to the AI; "Not done:" isn't spoken.
+- Live-tested and fixed: `open_folder` never got its folder (always went to the AI; now 0.2 s, brought to the
+  front); "close it" right after opening a folder closes that window in code (`desktop.just_opened`; the AI had
+  closed a PW tab); Chrome's "Pin Chrome" infobar isn't a dialog; BlueJ's New Class box is an owned window (now
+  seen; new class 2.2 s live in the scratch project `scratchpad/JarvisScratch`); "open Chrome" = main profile
+  (plain Chrome opened "Who's using Chrome?", which is never taken for a page); PW opens Chrome itself; PW's streak
+  notice is closed during waits and found before the feedback form under it; the guard's notes to the AI are never
+  read out; the review page says reasons in plain words.
+- Live OK: Did-you-mean, "No, I meant", "forget that", close this tab (+ the chess tab), folders, BlueJ new
+  class/open/compile, review page.
+- `tools/reliability.py` has 20 tasks (with expected answers: a wrong action can sound like success). Stop the
+  voice Jarvis while it runs (YouTube music wakes it). RESULT 3 Oct: **99/100 (99%)** over 5 rounds; the
+  one miss was the test reusing a class name (fixed: it picks an unused one). Slow ones for Block 3: "close all
+  YouTube tabs" 7.5 s, PW batch / Khazana ~7 s, YouTube play ~6 s.
+- Not done in Block 1: the user's BlueJ class "test" junk code (offer to clean it in Block 2); "Open Calculus"
+  still goes to the AI (Did-you-mean didn't catch it).
 
 **Block 2: Controllable coding mode.** The user chose "write, then say it":
 - Short pattern lines go in at once and Jarvis says exactly what it wrote. Anything bigger is read out first and
