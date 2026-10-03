@@ -157,10 +157,6 @@ class SessionTest(unittest.TestCase):
         self.assertEqual(ed.text_, code)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ThirtySeptemberTest(unittest.TestCase):
     """Every sentence of the 30 Sep coding session (BlueJ, class 'test'), with what it must do now. Then it
     made methods out of noise ('Ect.' -> 'public void ect()'), and a second class and main for 'wrap this'."""
@@ -201,3 +197,41 @@ class ThirtySeptemberTest(unittest.TestCase):
         self.assertIn('System.out.print("IE");', code)
         if codecheck.available("java"):
             self.assertEqual(codecheck.errors(code, "java"), ())
+
+
+class ArraysAndNavigationTest(unittest.TestCase):
+    """3 Oct, the user: 'create a 2D array of data type int with name ARR', and moving by line numbers."""
+
+    CODE = ("public class Test\n{\n    public static void main(String[] args)\n    {\n        int i = 0;\n    }\n}")
+
+    def test_2d_array_asks_the_size_then_writes_it(self):
+        ed, cm = FakeEditor(self.CODE, 4), codemode.CodeMode()
+        self.assertEqual(say(cm, ed, "Create a 2D array of data type int with name ARR."),
+                         "How many rows and columns? Say it like: 2D int array arr with 3 rows and 4 columns.")
+        self.assertEqual(ed.writes, 0)
+        self.assertIn("Added", say(cm, ed, "3 rows and 4 columns"))
+        self.assertIn("        int[][] ARR = new int[3][4];", ed.text_)
+
+    def test_array_in_one_go_and_in_cpp(self):
+        ed, cm = FakeEditor(self.CODE, 4), codemode.CodeMode()
+        say(cm, ed, "make an int array called nums of size 5")
+        self.assertIn("int[] nums = new int[5];", ed.text_)
+        cpp = FakeEditor("int main() {\n    return 0;\n}", 0, title="a.cpp - Visual Studio Code", lang="cpp")
+        say(cm, cpp, "create a 2d int array called grid with 3 rows and 3 columns")
+        self.assertIn("    int grid[3][3];", cpp.text_)
+
+    def test_navigation(self):
+        ed, cm = FakeEditor(self.CODE, 4), codemode.CodeMode()
+        ed.caret_line = lambda: ed.cursor + 1
+        self.assertEqual(say(cm, ed, "go to the end of the file"), "At the end, line 7.")
+        self.assertEqual(say(cm, ed, "go to the top"), "At the top.")
+        self.assertEqual(say(cm, ed, "go down 4 lines"), "Line 5.")
+        self.assertEqual(say(cm, ed, "next line"), "Line 6.")
+        self.assertEqual(say(cm, ed, "previous line"), "Line 5.")
+        self.assertEqual(say(cm, ed, "read line 5"), "Line 5: int i equals 0.")
+        self.assertEqual(say(cm, ed, "what's on this line"), "Line 5: int i equals 0.")
+        self.assertEqual(ed.writes, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

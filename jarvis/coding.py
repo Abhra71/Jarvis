@@ -129,6 +129,47 @@ def _original_case(original: str, lowered: str) -> str:
     return original[i:i + len(lowered)] if i >= 0 else lowered
 
 
+ASK = "\x00ask:"  # translate() needs one more detail: the rest is the question to say back
+
+
+_ARRAY = re.compile(
+    r"(?:create|make|declare|define|add|initiali[sz]e|write)?(?: me)? ?(?:an? |the )?(?:new )?"
+    r"(?:(?P<dim>2d|2 d|two d|two dimensional|2 dimensional|1d|one d|one dimensional|single dimensional) )?"
+    r"(?:(?P<t1>int|integer|double|float|char|character|boolean|string|long) )?array"
+    r"(?: of)?(?: (?:data )?type (?P<t2>int|integer|double|float|char|character|boolean|string|long)|"
+    r" (?P<t3>ints|integers|doubles|floats|chars|characters|booleans|strings|longs))?"
+    r"(?: (?:(?:with |having )?(?:the )?(?:name|called|named) )?"
+    r"(?P<n>(?!(?:of|with|having|size|and|type|data|called|named|name)\b)[a-z]\w*))?"
+    r"(?: (?:with|of|having|and)? ?(?:size )?(?P<r>\w+) rows? (?:and|by|,)? ?(?P<c>\w+) col(?:umn)?s?|"
+    r" (?:of |with )?size (?P<sz>\w+)(?: (?:by|and|x) (?P<sz2>\w+))?| with (?P<k>\w+) (?:elements|items|numbers|values))?")
+
+
+def _array(s: str, original: str, java: bool) -> str | None:
+    m = _ARRAY.fullmatch(s)
+    if not m or not (m.group("n") or m.group("dim")):
+        return None
+    t = m.group("t1") or m.group("t2") or (m.group("t3") or "").rstrip("s") or "int"
+    t = _TYPES.get(t, t)
+    if not java:
+        t = {"String": "string", "boolean": "bool"}.get(t, t)
+    two = bool(m.group("dim") and m.group("dim")[0] in "2t" and "one" not in m.group("dim")) or bool(m.group("c")
+                                                                                                       or m.group("sz2"))
+    name = m.group("n")
+    if not name:
+        return ASK + "What should the array be called?"
+    said_name = re.search(rf"\b{re.escape(name)}\b", original, re.I)  # "ARR" stays ARR (not the "arr" in "array")
+    name = said_name.group(0) if said_name else name
+    rows = _num_words(m.group("r") or m.group("sz") or m.group("k") or "")
+    cols = _num_words(m.group("c") or m.group("sz2") or "")
+    if two and not (rows.isdigit() and cols.isdigit()):
+        return ASK + "How many rows and columns? Say it like: 2D int array arr with 3 rows and 4 columns."
+    if not two and not rows.isdigit():
+        return ASK + "What size? Say it like: int array nums of size 5."
+    if java:
+        return f"{t}[][] {name} = new {t}[{rows}][{cols}];" if two else f"{t}[] {name} = new {t}[{rows}];"
+    return f"{t} {name}[{rows}][{cols}];" if two else f"{t} {name}[{rows}];"
+
+
 def translate(said: str, lang: str, code: str | None = None, names: set[str] | None = None) -> str | None:
     """Speech -> code for `lang` ("java" or "cpp"), or None when it isn't one of the common patterns.
     `names`: variables known from this session (VS Code doesn't show Jarvis its code)."""
@@ -152,6 +193,11 @@ def translate(said: str, lang: str, code: str | None = None, names: set[str] | N
         if java:
             return f"System.out.{'println' if newline else 'print'}({arg});"
         return f"cout << {arg}{' << endl' if newline else ''};"
+
+    # arrays (3 Oct, the user: "create a 2D array of data type int with name ARR"): the size is never guessed
+    arr = _array(s, original, java)
+    if arr is not None:
+        return arr
 
     # a variable: "int sum equals 0", "declare a string name", "double average is total divided by n"
     m = re.fullmatch(r"(?:declare |create |make |define |new )?(?:an? |the )?(?P<t>" + "|".join(_TYPES) +

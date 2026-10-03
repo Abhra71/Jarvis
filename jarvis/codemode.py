@@ -32,7 +32,7 @@ from .skills import editors, keys
 log = logging.getLogger(__name__)
 
 _POLITE = re.compile(r"^(?:(?:please|now|okay|ok|so|and|then|can you|could you|would you|i want you to|i want to|"
-                     r"let'?s|next|jarvis|hey jarvis)[, ]+)+", re.I)
+                     r"let'?s|next(?![, ]+line\b)|jarvis|hey jarvis)[, ]+)+", re.I)
 _NUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
         "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16,
         "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50}
@@ -62,6 +62,16 @@ CURSOR_INTO = re.compile(r"(?:move|go|take|put|place|jump)(?: me| the cursor| cu
 CURSOR_LOOSE = re.compile(r"(?:move|go|take|put|place|jump)(?: me| the cursor| cursor)? (?:inside|into|in|to) ")
 EXIT = re.compile(r"(?:come |get |go )?(?:out of|outside|exit|leave|after|close|end) (?:the |this )?(?:loop|block|if|"
                   r"else|while|for|braces?|brackets?|method|function|condition)|next block")
+END = re.compile(r"(?:go|move|jump|take me|take the cursor)(?: the cursor)? to (?:the )?(?:very )?(?:end|bottom|last line)"
+                 r"(?: of (?:the |this )?(?:file|code|program|class))?")
+TOP = re.compile(r"(?:go|move|jump|take me|take the cursor)(?: the cursor)? to (?:the )?(?:very )?(?:top|start|beginning|"
+                 r"first line)(?: of (?:the |this )?(?:file|code|program|class))?")
+DOWN = re.compile(r"next line|(?:go|move|jump) (?:to the )?next line|(?:go|move|jump) down(?: (?P<n>\w+) lines?)?|"
+                  r"down (?P<n2>\w+) lines?")
+UP = re.compile(r"previous line|(?:go|move|jump) (?:to the )?previous line|(?:go|move|jump) up(?: (?P<n>\w+) lines?)?|"
+                r"up (?P<n2>\w+) lines?")
+READ = re.compile(r"(?:read|say|tell me)(?: me)? (?:out )?(?:line (?:number )?(?P<n>\w+)|this line|the current line|"
+                  r"the line)|what(?:'s| is) on (?:line (?:number )?(?P<n2>\w+)|this line)")
 DELETE = re.compile(r"(?:delete|remove|erase|cut) (?:the )?(?:line (?:number )?(?P<a>\w+)(?: (?:to|through|till) "
                     r"(?:line )?(?P<b>\w+))?|lines (?:number )?(?P<a2>\w+) (?:to|through|till|and) (?P<b2>\w+)|"
                     r"(?P<this>this line|the current line|current line))")
@@ -121,6 +131,7 @@ class CodeMode:
         self.pending: tuple | None = None   # (Edit, before, title, said) waiting for a yes
         self.last_method: str | None = None
         self.last_written = ""
+        self.asked: str | None = None  # a sentence waiting for one detail ("How many rows and columns?")
 
     # ---- entry ------------------------------------------------------------------------------------------------
 
@@ -170,6 +181,9 @@ class CodeMode:
         m = WRAP.fullmatch(spoken)
         if m:
             return self.wrap(ed, m)
+        nav = self.navigate(ed, spoken)
+        if nav is not None:
+            return nav
         m = CURSOR_INTO.fullmatch(spoken)
         if m:
             return self.cursor_into(ed, m.group("n"))
@@ -195,7 +209,17 @@ class CodeMode:
             return "Not done: I can't read the code in this editor."
         before, cursor = got
         body = _POLITE.sub("", text.strip()).strip()
-        code = coding.translate(body, ed.lang, before, coding.identifiers(before) | coding.identifiers(self.last_written))
+        names = coding.identifiers(before) | coding.identifiers(self.last_written)
+        asked, self.asked = getattr(self, "asked", None), None
+        code = None
+        if asked:  # the answer to "How many rows and columns?": the first sentence, now with the detail
+            code = coding.translate(f"{asked} with {body.rstrip('.')}", ed.lang, before, names)
+            if code and code.startswith(coding.ASK):
+                code = None
+        code = code or coding.translate(body, ed.lang, before, names)
+        if code and code.startswith(coding.ASK):
+            self.asked = body.rstrip(".")
+            return code[len(coding.ASK):]
         source = "patterns"
         if code is None:
             words = spoken.split()
@@ -359,6 +383,44 @@ class CodeMode:
             self.last_method = hit.name
         ed.place(line)
         return f"In {hit.name}."
+
+    def navigate(self, ed, spoken: str) -> str | None:
+        """Moving around and reading (3 Oct, the user: "can I navigate through the file using line numbers?").
+        "go to line N" is the editor's own ability; these are the rest."""
+        m = END.fullmatch(spoken) or TOP.fullmatch(spoken)
+        if m:
+            got = ed.read()
+            if got is None:
+                return "Not done: I can't read the code in this editor."
+            lines = got[0].split("\n")
+            if END.fullmatch(spoken):
+                last = max((i for i, ln in enumerate(lines) if ln.strip()), default=0)
+                ed.place(last)
+                return f"At the end, line {last + 1}."
+            ed.place(0)
+            return "At the top."
+        m = DOWN.fullmatch(spoken) or UP.fullmatch(spoken)
+        if m:
+            n = _n(m.group("n") or m.group("n2")) or 1
+            now = ed.caret_line()
+            if now is None:
+                return "Not done: I can't tell which line the cursor is on."
+            target = max(0, now - 1 + (n if DOWN.fullmatch(spoken) else -n))
+            ed.place(target)
+            return f"Line {target + 1}."
+        m = READ.fullmatch(spoken)
+        if m:
+            got = ed.read()
+            if got is None:
+                return "Not done: I can't read the code in this editor."
+            lines = got[0].split("\n")
+            num = m.group("n") or m.group("n2")
+            k = ((_n(num) or 0) - 1) if num else got[1]
+            if k is None or not 0 <= k < len(lines):
+                return f"There's no line {num}." if num else "I can't tell which line you're on."
+            body = lines[k].strip()
+            return f"Line {k + 1} is empty." if not body else f"Line {k + 1}: {codeedit._say(body) or body}."
+        return None
 
     def exit_block(self, ed) -> str:
         got = ed.read()
