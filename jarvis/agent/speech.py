@@ -81,6 +81,11 @@ def problem(why: str) -> str:
             else _sentence(f"The {name} box is still open")
     if re.match(r"A dialog box is open in front", w):
         return "There's a box open in front that needs an answer first."
+    if w.startswith("the user didn't ask for more actions"):
+        # 3 Oct live: the guard's note to the AI was read out word for word.
+        return "That needed more steps than you asked for, so I stopped partway."
+    if re.search(r"\b(the user|ask the user)\b", w, re.I):
+        return "I stopped partway."  # any other note meant for the AI is never read out
     if w.startswith("the cursor isn't in a text box"):
         return "I couldn't get into a text box."
     if w.startswith("the media is still playing"):

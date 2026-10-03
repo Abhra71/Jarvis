@@ -37,13 +37,14 @@ class NewClassTest(unittest.TestCase):
         typed.assert_not_called()
 
     def test_types_only_into_bluejs_own_box(self):
+        # The box is an owned window: it's never in the top-level window list (3 Oct live), only in front.
         buttons = [[], [], [("Motivation", None)]]
         with mock.patch.object(editors, "_project_window", return_value=(1, "java")), \
                 mock.patch.object(editors, "_class_buttons", side_effect=lambda h: buttons.pop(0) if buttons else []), \
                 mock.patch.object(editors.desktop, "_focus"), mock.patch.object(editors.desktop, "_uia") as uia, \
                 mock.patch.object(editors, "_centre_click"), mock.patch.object(editors.time, "sleep"), \
                 mock.patch.object(editors.win32gui, "GetForegroundWindow", return_value=2), \
-                mock.patch.object(editors.desktop, "_app_windows", return_value=[(2, "javaw", "BlueJ: New Class")]), \
+                mock.patch.object(editors.desktop, "_process_name", return_value="javaw.exe"), \
                 mock.patch.object(editors.desktop, "type_text") as typed, mock.patch.object(editors.keys, "press"):
             ui = mock.Mock()
             ui.ElementFromHandle.return_value.FindAll.return_value.Length = 1
@@ -58,7 +59,7 @@ class NewClassTest(unittest.TestCase):
                 mock.patch.object(editors, "_centre_click"), mock.patch.object(editors.time, "sleep"), \
                 mock.patch.object(editors.time, "monotonic", side_effect=[0, 0, 1, 2, 4, 5, 6, 7]), \
                 mock.patch.object(editors.win32gui, "GetForegroundWindow", return_value=1), \
-                mock.patch.object(editors.desktop, "_app_windows", return_value=[(1, "javaw", "BlueJ: java")]), \
+                mock.patch.object(editors.desktop, "_process_name", return_value="javaw.exe"), \
                 mock.patch.object(editors.desktop, "type_text") as typed:
             ui = mock.Mock()
             ui.ElementFromHandle.return_value.FindAll.return_value.Length = 1

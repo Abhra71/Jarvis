@@ -434,7 +434,9 @@ def new_class(said: str) -> str:
     while time.monotonic() < deadline:
         time.sleep(0.2)
         front = win32gui.GetForegroundWindow()
-        if front != hwnd and any(h == front and p.startswith("java") for h, p, _ in desktop._app_windows()):
+        # The box is owned by the project window, so the window list (top-level windows only) never shows it:
+        # 3 Oct live, it opened but was "not seen", and the AI took over.
+        if front and front != hwnd and desktop._process_name(front).startswith("java"):
             dialog = front
             break
     if not dialog:

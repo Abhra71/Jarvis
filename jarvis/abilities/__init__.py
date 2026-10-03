@@ -63,7 +63,8 @@ NO_HANDS = {"find_newest", "open_file_here", "open_settings"}
 # Abilities whose own "Not done: …" is the answer: they did the whole job in code, and the AI can only do worse.
 # 1 Oct: "Connect Bluetooth to Rockerz 480" failed in code (headphones off), then went to the AI, which pressed
 # Esc and hunted for a "Bluetooth" button.
-FINAL = {"connect_bluetooth", "disconnect_bluetooth", "switch_setting", "set_brightness", "start_game", "close_game"}
+FINAL = {"connect_bluetooth", "disconnect_bluetooth", "switch_setting", "set_brightness", "start_game", "close_game",
+         "bluej_new_class"}
 last_hit: str | None = None  # the ability the last handle() ran
 
 

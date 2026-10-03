@@ -24,6 +24,10 @@ class SpeechTest(unittest.TestCase):
                 "There's a box open in front that needs an answer first. What should I do?",
             "the cursor isn't in a text box.": "I couldn't get into a text box. What should I do?",
             "the media is still playing.": "It's still playing. What should I do?",
+            # 3 Oct live (BlueJ new class): the guard's note to the AI was read out.
+            "Not done: the user didn't ask for more actions than you've already taken. Stop and report what "
+            "happened; if something is still needed, ask the user first.":
+                "That needed more steps than you asked for, so I stopped partway. What should I do?",
         }
         for why, said in cases.items():
             self.assertEqual(speech.stuck(why), said, why)
