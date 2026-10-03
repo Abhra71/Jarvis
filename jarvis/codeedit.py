@@ -266,6 +266,14 @@ def _say(code: str) -> str:
     m = re.search(r"cin >> (\w+)|(\w+) = sc\.next|getline\(cin, (\w+)\)", code)
     if m:
         return f"input {next(g for g in m.groups() if g)}"
+    m = re.fullmatch(r"(\w+)\[\]\[\] (\w+) = new \w+\[(\w+)\]\[(\w+)\]|(\w+) (\w+)\[(\w+)\]\[(\w+)\]", s)
+    if m:
+        t, n, r, c = [g for g in m.groups() if g]
+        return f"a 2D {t} array {n}, {r} by {c}"
+    m = re.fullmatch(r"(\w+)\[\] (\w+) = new \w+\[(\w+)\]|(\w+) (\w+)\[(\w+)\]", s)
+    if m:
+        t, n, k = [g for g in m.groups() if g]
+        return f"{'an' if t[0] in 'aeiou' else 'a'} {t} array {n} of size {k}"
     m = re.fullmatch(r"cout << (.+?)(?: << endl)?", s)
     if m:
         return "print " + " ".join(m.group(1).replace('"', "").replace(" << ", " ").split())
