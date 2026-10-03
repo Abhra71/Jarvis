@@ -148,7 +148,7 @@ class BluetoothRouteTest(unittest.TestCase):
     def test_a_failed_connect_is_the_answer_not_a_job_for_the_ai(self):
         from jarvis import abilities, corrections
         a = assistant.Assistant.__new__(assistant.Assistant)
-        a.dictating, a.coding, a.gaming, a.last_code = False, False, False, ""
+        a.dictating, a.coding, a.gaming = False, False, False
         a.corrections = corrections.Corrections(None)
         a.last_request, a.fixed_request = "", None
         a.skills = mock.Mock()

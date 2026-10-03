@@ -204,10 +204,67 @@ class Editor:
                 return "ok"
         return "Not done: I couldn't find the end of this block."
 
+    # ---- the whole file (coding mode, 3 Oct: changes are made on the code's structure, then written) ----
+
+    @property
+    def file_class(self) -> str:
+        """The class a Java file holds by its name (BlueJ: the editor's class; VS Code: the file name)."""
+        return "Main"
+
+    def read(self) -> tuple[str, int | None] | None:
+        """(the whole code, the cursor's 0-based line), or None when it can't be read."""
+        raise NotImplementedError
+
+    def write(self, text: str, cursor: int) -> str:
+        """Replace the whole code with `text`, cursor at the end of line `cursor` (0-based); read back to check.
+        Returns "ok" or why not."""
+        keys.press("ctrl+a")
+        time.sleep(0.05)
+        if not _paste(text if text else " "):
+            return "Not done: I couldn't put the code in (the clipboard is busy)."
+        if not text:
+            keys.press("ctrl+a")
+            keys.press("backspace")
+        time.sleep(0.15)
+        self.place(cursor)
+        got = self.read()
+        if got is None:
+            return "ok"  # can't read it back: the paste itself was confirmed
+        from ..codeedit import same
+        if same(got[0], text):
+            return "ok"
+        if same("\n".join(ln.strip() for ln in got[0].split("\n")), "\n".join(ln.strip() for ln in text.split("\n"))):
+            log.info("%s re-indented the pasted code; keeping it", self.name)
+            return "ok"
+        log.warning("Wrote %r but read back %r", text[:200], got[0][:200])
+        return "Not done: the code in the editor didn't come out as I wrote it."
+
+    def place(self, line: int):
+        """The cursor at the end of line `line` (0-based)."""
+        self.go_to_line(line + 1)
+        keys.press("end")
+
+    cheap_read = False  # can the whole code be read back without keys? (BlueJ: yes; VS Code copies it)
+
+    def insert_below(self, lines: list[str], up: int) -> bool:
+        """New lines right below the cursor's line (already indented), then the cursor `up` lines above the last
+        one, at its end. The fast way: no reading or rewriting the whole file."""
+        keys.press("end")
+        if not _paste("\n" + "\n".join(lines)):
+            return False
+        time.sleep(0.1)
+        if up > 0:
+            keys.press("up", up)
+        keys.press("end")
+        return True
+
     # per editor
     def _selected_text(self, span) -> str: raise NotImplementedError
     def _comment_keys(self, want: bool, mixed: bool): raise NotImplementedError
     def _drop_selection(self): keys.press("escape")
+
+
+_LN_COL = re.compile(r"^Ln (\d+), Col (\d+)")
 
 
 class VSCode(Editor):
@@ -216,6 +273,44 @@ class VSCode(Editor):
     def __init__(self, title: str):
         self.title = title
         self.lang = "java" if ".java" in title.lower() else ("python" if ".py " in title.lower() + " " else "cpp")
+
+    @property
+    def file_class(self) -> str:
+        m = re.match(r"\W*([A-Za-z_]\w*)\.java\b", self.title)
+        return m.group(1) if m else "Main"
+
+    def _status(self) -> str:
+        """The status bar's position item: "Ln 12, Col 5" (plus "(40 selected)" with a selection)."""
+        UIA, uia = desktop._uia()
+        root = uia.ElementFromHandle(win32gui.GetForegroundWindow())
+        for _ in range(3):
+            found = root.FindAll(UIA.TreeScope_Descendants, uia.CreatePropertyCondition(
+                UIA.UIA_ControlTypePropertyId, UIA.UIA_ButtonControlTypeId))
+            for i in range(found.Length):
+                name = found.GetElement(i).CurrentName or ""
+                if _LN_COL.match(name):
+                    return name
+            time.sleep(0.3)  # the first ask switches VS Code's accessibility on: a moment later it's there
+        return ""
+
+    def caret_line(self) -> int | None:
+        """1-based, from the status bar ("Ln 12, Col 5")."""
+        m = _LN_COL.match(self._status())
+        return int(m.group(1)) if m else None
+
+    def read(self) -> tuple[str, int | None] | None:
+        line = self.caret_line()
+        keys.press("ctrl+a")
+        time.sleep(0.05)
+        selected = "selected" in self._status()
+        text = _copied()
+        keys.press("escape")
+        if line:
+            self.go_to_line(line)
+        if not text and selected:
+            log.warning("VS Code: the code was selected but nothing was copied")
+            return None  # never mistake a failed copy for an empty file (it would be written over)
+        return text.replace("\r\n", "\n"), (line - 1 if line else None)
 
     def go_to_line(self, n: int) -> str:
         keys.press("ctrl+g")
@@ -242,10 +337,22 @@ class VSCode(Editor):
 class BlueJ(Editor):
     name = "BlueJ"
     lang = "java"
+    cheap_read = True
 
     def __init__(self, title: str):
         self.title = title
         self.cls, _, self.project = title.partition(" - ")
+
+    @property
+    def file_class(self) -> str:
+        return self.cls.strip() or "Main"
+
+    def read(self) -> tuple[str, int | None] | None:
+        text = self.text()
+        if text is None:
+            return None
+        line = self.caret_line()
+        return text.replace("\r\n", "\n").replace("\r", "\n"), (line - 1 if line else None)
 
     def _tp(self):
         UIA, uia = desktop._uia()

@@ -44,7 +44,7 @@ class AssistantTest(unittest.TestCase):
     def _assistant(self):
         from jarvis import assistant
         a = assistant.Assistant.__new__(assistant.Assistant)
-        a.dictating, a.coding, a.gaming, a.last_code = False, False, False, ""
+        a.dictating, a.coding, a.gaming = False, False, False
         a.corrections = corrections.Corrections(None)
         a.last_request, a.fixed_request = "Open Clawed.", None
         a.skills = mock.Mock()

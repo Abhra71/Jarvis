@@ -14,7 +14,7 @@ from .audio import Mic, record_utterance
 from .skills import volume
 from .brain import Brain, BrainUnavailable
 from . import abilities
-from . import coding
+from . import codemode
 from .skills import Skills, desktop, editors, elements, keys, request_parts, site_url, sites
 from .stt import Transcriber
 from .tts import Speaker
@@ -33,42 +33,13 @@ _NEW_LINE = re.compile(r"(new|next) (line|paragraph)")
 _SCRATCH = re.compile(r"(scratch|delete|undo|remove|erase) (that|it|the last (bit|part|sentence))")
 DICTATION_SILENCE = 30  # seconds of quiet that end dictation
 
-# Coding mode (30 Sep): with BlueJ or VS Code in front, speech becomes code (jarvis/coding.py); commands still work.
+# Coding mode: with BlueJ or VS Code in front, speech becomes code (jarvis/codemode.py); commands still work.
 _CODING_ON = re.compile(r"(start |enter |turn on |switch to )?(coding|code) mode( on)?|start coding|let'?s code")
-_EXIT_BLOCK = re.compile(r"(come |get |go )?(out of|outside|exit|leave|after|close|end) (the |this )?(loop|block|if|else|"
-                         r"while|for|braces?|brackets?|method|function|condition)|next block")
 # Gaming mode (30 Sep): no follow-up listening after a reply, so game sounds can't be taken for commands.
 _GAMING_ON = re.compile(r"(start |enter |turn on |switch to )?(gaming|game) mode( on)?|let'?s play")
 _GAMING_OFF = re.compile(r"(stop|end|exit|leave|turn off|quit) (gaming|game) mode|(gaming|game) mode off")
 _CODING_OFF = re.compile(r"(stop|end|exit|leave|turn off|quit) (coding|code)( mode)?|(coding|code) mode off|"
                          r"stop coding")
-# Editor commands in coding mode (30 Sep: "remove whatever you have written above", "control plus A" and
-# "move the cursor inside the main method" were all turned into code by the AI).
-_CODE_UNDO = re.compile(r"(undo|undo that|undo it|scratch that|take that back|remove (that|it|this)|delete (that|it)|"
-                        r"remove what(ever)? you (have |just )?(wrote|written|typed|added)( above)?|"
-                        r"delete what(ever)? you (have |just )?(wrote|written|typed|added)( above)?)( please)?")
-_CODE_REDO = re.compile(r"redo( that| it)?")
-_CODE_SELECT_ALL = re.compile(r"(select all|select everything|(control|ctrl) (plus )?a)( please)?|"
-                              r"(i want you to )?(press|click) (control|ctrl) (plus )?a")
-_CODE_CLEAR = re.compile(r"(delete|remove|clear|erase|wipe)( out)? (all|everything|all the code|the whole code|"
-                         r"all of it|the code|whatever is (written|there)( here| in this code| on (my |the )?screen)?)"
-                         r"( please)?")
-_CODE_INTO = re.compile(r"(move|go|take|put|place)( me| the cursor)? (inside|into|in|to) (the )?(?P<n>main|[a-z]\w*)"
-                        r"( method| function| loop| class| block)?")
-_POLITE = re.compile(r"^(?:(?:please|now|okay|ok|so|and|then|can you|could you|would you|i want you to|i want to|"
-                     r"let'?s|next)[, ]+)+", re.I)
-# A clear instruction to write something: only these ever go to the AI in coding mode.
-_WRITE_CODE = re.compile(r"(write|add|make|create|declare|define|implement|initiali[sz]e|insert|generate|build|put) "
-                         r"(a |an |the |me a |me an )?(new )?(method|function|loop|for loop|while loop|variable|array|"
-                         r"if|condition|switch|constructor|class|string|integer|program|code|statement|recursive|"
-                         r"\w+ (method|function|loop|variable|array))")
-_CODE_STATUS = re.compile(r"(is )?(coding|code) mode (on|still on|active)|are you in (coding|code) mode")
-# Said in coding mode but meant as a command, not code.
-_NOT_CODE = re.compile(r"(open|close|play|pause|resume|volume|mute|unmute|search|switch|minimi[sz]e|maximi[sz]e|"
-                       r"optimi[sz]e|snap|scroll|undo|redo|save|copy|paste|cut|select|go back|what|who|how|why|when|"
-                       r"tell me|turn (on|off)|brightness|night light|bluetooth|wi ?fi|email|upload|stop|cancel|press|"
-                       r"click|can you|could you|please|i want you|delete|remove|clear|is |are |did |do you|move|"
-                       r"create a (new )?class|make a (new )?class|new class)\b")
 
 _CLOSE_IT = re.compile(r"(?:(?:ok(?:ay)?|now|and|then|please),? )*(?:close|shut) (?:it|that|this|this one|that one|"
                        r"this window|that window|this folder|that folder|the folder)(?: now)?(?: please)?")
@@ -135,8 +106,7 @@ class Assistant:
         self.corrections = corrections.Corrections()  # "No, I meant Claude": fixed now, and remembered
         self.last_request = ""  # the last request handled (what a correction corrects)
         self.fixed_request: str | None = None
-        self.code_names: set[str] = set()  # variables written this session (VS Code doesn't show its code)
-        self.last_code = ""  # the last code written (the same thing twice is a misunderstanding, not a request)
+        self.codemode = codemode.CodeMode(think=self._think)
         self.dictated = ""  # the last piece typed, for "scratch that"
         self.mic = None
 
@@ -249,20 +219,13 @@ class Assistant:
             self.coding = False
             log.info("Coding mode off")
             return "coding", "Coding mode off."
-        if self.coding and editors.current():
-            done = self._code_command(spoken, editors.current())
-            if done is not None:
-                return "coding", done
-        if self.coding and _EXIT_BLOCK.fullmatch(spoken) and editors.current():
-            r = editors.current().exit_block()
-            return "coding", "" if r == "ok" else r
-        hit = abilities.match(text) if self.coding else None
-        if hit and hit[0].name == "bluej_new_class" and not isinstance(editors.current(), editors.BlueJ):
-            hit = None  # "create a class called Shape" in VS Code is code to write, not BlueJ's New Class button
-        if self.coding and editors.current() and not hit:
-            reply = self._code(text, editors.current(), unsure)
+        ed = editors.current() if self.coding else None
+        if ed:
+            # Coding mode (Block 2, 3 Oct): its fixed command set and code, checked before it's written
+            # (jarvis/codemode.py). None: not a coding command (compile, run, open Chrome…): handled below.
+            reply = self.codemode.handle(text, ed, unsure)
             if reply is not None:
-                return "coding", reply  # else it wasn't code: handled as a normal request below
+                return "coding", reply
         if _DICTATE_ON.fullmatch(spoken):
             kind = elements.focused_kind()
             if kind not in ("field", "document", "dropdown"):
@@ -333,79 +296,6 @@ class Assistant:
             log.exception("AI turn failed")
             return "failed", "Sorry, something went wrong with that."
 
-    def _code_command(self, spoken: str, ed) -> str | None:
-        """An editing command said in coding mode, or None when it isn't one."""
-        if _CODE_STATUS.fullmatch(spoken):
-            return "Yes, coding mode is on." if self.coding else "Coding mode is off."
-        if _CODE_UNDO.fullmatch(spoken):
-            keys.press("ctrl+z")
-            return ""
-        if _CODE_REDO.fullmatch(spoken):
-            keys.press("ctrl+y")
-            return ""
-        if _CODE_SELECT_ALL.fullmatch(spoken):
-            keys.press("ctrl+a")
-            return "Selected everything."
-        if _CODE_CLEAR.fullmatch(spoken):
-            keys.press("ctrl+a")
-            time.sleep(0.1)
-            keys.press("backspace")
-            return "Cleared the code. Say undo to bring it back."
-        m = _CODE_INTO.fullmatch(spoken)
-        if m:
-            r = ed.move_into(m.group("n"))
-            return "" if r == "ok" else r
-        return None
-
-    def _code(self, text: str, ed, unsure: bool = False) -> str | None:
-        """One spoken line of code, put in at the cursor and checked. Quiet when it works. None when it isn't code
-        at all (a normal request, handled as usual). Rules, from 30 Sep (misheard sounds and commands became code):
-          - the common patterns ("print …", "int x equals …", "for i from …") are code;
-          - the AI is asked only for a clear, several-word instruction to WRITE something ("write a method…",
-            "add a function…", "make a loop…"), never for unclear speech;
-          - anything else is a normal request, or "say it again"."""
-        body = _POLITE.sub("", text.strip()).strip()
-        before = ed.text()  # BlueJ shows its whole code; VS Code doesn't (None)
-        code = coding.translate(body, ed.lang, before, self.code_names)
-        source = "patterns"
-        low = " ".join(re.findall(r"[a-z+]+", body.lower()))
-        if code is None:
-            if _NOT_CODE.match(low):
-                return None  # a command or a question: the normal way
-            if unsure or len(low.split()) < 3 or not _WRITE_CODE.match(low):
-                return "I didn't catch that as code. Say it again?"
-            think = getattr(self.brain, "_think", None)
-            code = coding.ask_ai(text, ed.lang, before, think) if think and self.brain.available else None
-            source = "AI"
-        if not code:
-            return "I didn't get that as code. Say it again, or say coding mode off."
-        if self.last_code and code.strip() == self.last_code.strip():
-            return "That's the same code I just wrote, so I didn't add it again."
-        log.info("Coding (%s, %s): %r -> %r", ed.name, source, text, code)
-        self.code_names |= coding.identifiers(code)
-        self.last_code = code
-        extra = coding.needs_scanner(code, before) if ed.lang == "java" else []
-        if "scanner" in extra:
-            code = "Scanner sc = new Scanner(System.in);\n" + code
-        result = ed.insert(code)
-        if result != "ok":
-            return result
-        if "import" in extra:  # Java input needs "import java.util.Scanner;" at the top
-            here = getattr(ed, "caret_line", lambda: None)()
-            ed.go_to_line(1)
-            keys.press("home")
-            editors._paste("import java.util.Scanner;\n")
-            if here:
-                ed.go_to_line(here + 1)
-                keys.press("end")
-        after = ed.text()
-        if before is not None and after is not None:
-            wanted = [ln.strip() for ln in code.replace(editors.CURSOR, "").split("\n") if ln.strip()]
-            missing = [ln for ln in wanted if ln not in after]
-            if missing:
-                return f"Not done: I couldn't see {missing[0]} in the code afterwards."
-        return ""
-
     def _dictate(self, text: str, spoken: str) -> str:
         """One piece of dictation: typed as said (never Enter: in a chat that would send it). Replies are
         empty, so Jarvis stays quiet while you dictate."""
@@ -434,6 +324,12 @@ class Assistant:
             return f"I stopped dictation: {result}"
         self.dictated = piece
         return ""
+
+    def _think(self, system: str, user: str) -> str:
+        """The AI for coding mode's bigger pieces ("write a method that…")."""
+        if not getattr(self.brain, "available", False):
+            raise RuntimeError("the AI isn't available")
+        return self.brain._think(system, user)
 
     def open_dashboard(self) -> str:
         if not self.dashboard_url:
