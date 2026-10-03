@@ -87,18 +87,37 @@ Run the **whole PC by voice**: sit back and do ~99% of computer work reliably, f
   - PW cards have no accessible names: clicked by OCR, after the text stops moving (`_find_steady`). OCR clicks never use the browser's own tab strip (`elements.page_top`).
 - The user works on the PC in between: live tests only while they say it's free; stop at once when they say pause.
 
-## Open items
-- Live-test when the user says the PC is free: BlueJ new class, stricter coding mode, "Did you mean Claude?",
-  "No, I meant …", "close this" in Chrome, the review page. The user's BlueJ class "test" has junk code from the old
-  coding mode: offer to clean it (undo / delete all).
+## The plan from 3 Oct: blocks (one new chat per block; say "continue Jarvis: block N")
+Full plan: ~/.claude/plans/yea-agent-industry-grade-adaptive-lampson.md. The user allows full PC use when idle.
+**Block 1: Trust first.** Logs since 1 Oct:
+- Background speech (a Hindi talk or TV, 1 Oct 21:23) went to the AI as 8 requests. Ignore speech not addressed to
+  Jarvis: gibberish or non-English, long with no command verb; after 2 ignored, go back to sleep. Regression tests
+  from `logs/tasks-2026-10-01.jsonl`.
+- "Send it for me" clicked **Share** with no yes (2 Oct 11:51): Share/Send/Post/Submit/Buy clicks need a yes
+  (`_RISKY_CLICK` in `skills/__init__.py`).
+- "Connect Bluetooth to Rockerz 480" got stuck: route it to `connect_bluetooth`.
+- Live-test the 1 Oct batch (Did-you-mean, "No, I meant", close-this-tab, folders, BlueJ new class in a scratch
+  project, review page), then grow `tools/reliability.py` to ~20 tasks and run until it passes 95%.
 
-## Next, in the user's order
-1. Live tests of the 1 Oct batch (above), then the user's 2–3 day trial; review with the status page and
-   `logs/tasks-*.jsonl`, plus `tools/replay.py`.
-2. **Self-healing** (Phase 5) rest: per-app/site notes Jarvis writes itself, daily self-review (corrections,
-   patterns and "forget that" are built).
-4. Hardening (Phase 6), chess (Phase 7, with chess mode), then the EXE.
+**Block 2: Controllable coding mode.** The user chose "write, then say it":
+- Short pattern lines go in at once and Jarvis says exactly what it wrote. Anything bigger is read out first and
+  written only after a yes.
+- "Undo" removes Jarvis's own last change, using its own record.
+- **Never leave broken code** (3 Oct: "wrap this inside a method" ignored syntax, so it felt like junk). After each
+  change: compile (BlueJ) or `g++ -fsyntax-only` (VS Code), plus a brace check before writing. On an error, fix it
+  once; otherwise undo and say so.
+- Structural edits (wrap in method/loop, rename) work on the whole file's structure, then compile.
+- "Fix the errors" compiles, fixes and compiles again.
+- A fixed command set; anything else gets "Say it again?".
+- A pop-up shows what was heard and what was written; a cheat sheet for the user.
+- Tests from the 30 Sep sentences.
 
+**Block 3: Speed.** Cache snapshots, read the screen and plan in parallel, fail fast, more code plans. Targets: code
+≤1.5 s, AI ≤4 s.
+**Block 4: Trial** (2–3 days) and review. **Block 5:** Phase 5 rest (site notes, daily self-review).
+**Block 6:** Hardening. **Block 7:** Chess mode (vision board, voice moves, a mode switch). **Block 8:** EXE.
+
+Also open: the user's BlueJ class "test" has junk code from the old coding mode; offer to clean it.
 
 Report the % done at each phase end.
 
