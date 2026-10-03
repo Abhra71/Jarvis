@@ -21,7 +21,7 @@ class FakeEditor(editors.Editor):
     def file_class(self):
         return self.title.split(" - ")[0]
 
-    def read(self):
+    def read(self, keep_cursor=True):
         return self.text_, self.cursor
 
     def write(self, text, cursor):

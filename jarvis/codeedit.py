@@ -263,6 +263,12 @@ def _say(code: str) -> str:
     """The first line of code, said like a person: 'int i = 0;' -> 'int i equals 0'."""
     first = next((ln.strip() for ln in code.replace(CURSOR, "").split("\n") if ln.strip()), "")
     s = first.rstrip(";{ ").rstrip()
+    m = re.search(r"cin >> (\w+)|(\w+) = sc\.next|getline\(cin, (\w+)\)", code)
+    if m:
+        return f"input {next(g for g in m.groups() if g)}"
+    m = re.fullmatch(r"cout << (.+?)(?: << endl)?", s)
+    if m:
+        return "print " + " ".join(m.group(1).replace('"', "").replace(" << ", " ").split())
     # loops and methods by what they mean (3 Oct live: "for i equals 1, i at most 5, i plus plus")
     m = re.fullmatch(r"for \((?:int )?(\w+) = (.+?); \1 (<=|<|>=|>) (.+?); \1(\+\+|--|\s*[+-]= ?\S+)\)", s)
     if m:
@@ -587,6 +593,42 @@ def rename(text: str, old: str, new: str) -> Edit:
     line = text[:hits[0]].count("\n")
     return Edit(out, line, f"Renamed {old} to {new} in {len(hits)} place{'s' if len(hits) != 1 else ''}.",
                 (line, line))
+
+
+_CPP_HEADERS = [  # (what the code uses, the include it needs)
+    (r"\b(?:cin|cout|cerr|endl|getline)\b", "iostream"),
+    (r"\bstring\b", "string"),
+    (r"\bvector\s*<", "vector"),
+    (r"\b(?:sqrt|pow|fabs|ceil|floor)\s*\(", "cmath"),
+    (r"\b(?:sort|reverse|max_element|min_element)\s*\(", "algorithm"),
+]
+
+
+def cpp_headers(text: str) -> tuple[str, int]:
+    """The #includes and `using namespace std;` the C++ code needs and doesn't have (3 Oct live: a new file's
+    main had none, so cin wasn't declared). Returns (text, how many lines were added at the top)."""
+    code = mask(text)
+    if "bits/stdc++.h" in text:
+        return text, 0
+    have = set(re.findall(r"#include\s*<(\w+)>", text))
+    need = [h for pat, h in _CPP_HEADERS if re.search(pat, code) and h not in have]
+    if "iostream" in have and "string" in need:
+        need.remove("string")  # iostream brings string
+    lines = [f"#include <{h}>" for h in need]
+    uses_std = any(re.search(rf"(?<!::)\b{pat}", code) for pat in (r"(?:cin|cout|cerr|endl|string|vector|sort)\b",))
+    if uses_std and "using namespace std" not in text and not re.search(r"\bstd::", code):
+        lines.append("using namespace std;")
+    if not lines:
+        return text, 0
+    old = text.split("\n")
+    last_inc = max((i for i, ln in enumerate(old) if ln.startswith("#include")), default=-1)
+    if last_inc >= 0:  # new includes go below the ones there
+        incs = [ln for ln in lines if ln.startswith("#")]
+        rest = [ln for ln in lines if not ln.startswith("#")]
+        out = old[:last_inc + 1] + incs + rest + old[last_inc + 1:]
+    else:
+        out = lines + ([""] if old and old[0].strip() else []) + old
+    return "\n".join(out), len(out) - len(old)
 
 
 def block_span(text: str, line: int) -> tuple[int, int]:

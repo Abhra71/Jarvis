@@ -108,6 +108,8 @@ def find_window(app: str) -> tuple[int, str, str] | None:
 
 
 def _focus(hwnd):
+    if win32gui.GetForegroundWindow() == hwnd and not win32gui.IsIconic(hwnd):
+        return  # already in front: the Alt tap below would open its menu (3 Oct: VS Code's menu opened)
     if win32gui.IsIconic(hwnd):
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
     _allow_foreground()

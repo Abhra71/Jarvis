@@ -124,6 +124,15 @@ class CodeMode:
 
     def handle(self, text: str, ed: editors.Editor, unsure: bool = False) -> str | None:
         """The reply, or None when it isn't a coding command (the normal request handling takes it)."""
+        self._lost = None  # VS Code: reading the code moves the cursor; it's put back unless a write placed it
+        ed = _Tracked(ed, self)
+        try:
+            return self._handle(text, ed, unsure)
+        finally:
+            if self._lost is not None:
+                ed.place(self._lost)
+
+    def _handle(self, text: str, ed, unsure: bool) -> str | None:
         spoken = " ".join(_POLITE.sub("", re.sub(r"[,!?]", " ", text.lower())).strip(" .").split())
         spoken = re.sub(r"\bsystem\.?\s*out\.?\s*", "system out ", spoken)
         if self.pending:
@@ -149,7 +158,7 @@ class CodeMode:
         m = CLASS.fullmatch(spoken)
         if m:
             name = m.group("n") or m.group("n2")
-            if isinstance(ed, editors.BlueJ) and name and name.lower() != ed.file_class.lower():
+            if isinstance(getattr(ed, "_ed", ed), editors.BlueJ) and name and name.lower() != ed.file_class.lower():
                 return None  # BlueJ: another class is a new file (its New Class button: abilities)
             return self._structure(ed, lambda t, c: codeedit.ensure_class(t, (name or ed.file_class).capitalize()
                                                                           if not name or name.islower() else name,
@@ -443,9 +452,14 @@ class CodeMode:
     def _apply(self, ed, before: str, cursor: int | None, edit: codeedit.Edit, check: bool, heard: str = "") -> str:
         """Checked, written, read back, recorded. Never leaves broken code."""
         if not edit.changed:
-            if edit.cursor is not None and edit.cursor != cursor:
+            if edit.cursor is not None and (edit.cursor != cursor or not ed.cheap_read):
                 ed.place(edit.cursor)
             return edit.said
+        if ed.lang == "cpp" and edit.text:
+            edit.text, added = codeedit.cpp_headers(edit.text)
+            if added:
+                edit.cursor += added
+                edit.lines = (edit.lines[0] + added, edit.lines[1] + added)
         why = codeedit.problem(edit.text)
         if why and not codeedit.problem(before):
             log.warning("Refusing an edit that unbalances the code: %s", why)
@@ -479,6 +493,8 @@ class CodeMode:
         old, new = before.split("\n"), edit.text.split("\n")
         k, n = edit.lines[0], edit.lines[1] - edit.lines[0] + 1
         below = cursor is not None and k == cursor + 1 and n > 0 and new[:k] == old[:k] and new[k + n:] == old[k:]
+        if below and not ed.cheap_read:
+            ed.place(cursor, known=1)  # VS Code: reading left the cursor on line 1 (3 Oct live)
         if below and ed.insert_below(new[k:k + n], (k + n - 1) - edit.cursor):
             got = ed.read() if ed.cheap_read else None  # BlueJ: reading back is instant
             if got is None or codeedit.same(got[0], edit.text):
@@ -521,6 +537,35 @@ class CodeMode:
         self.redone.pop()
         self.history.append(change)
         return f"Redone: {change.said[0].lower() + change.said[1:]}"
+
+
+class _Tracked:
+    """The editor, reading without putting the cursor back (one Go to line saved per command in VS Code); the
+    command's own write or move places it, else CodeMode.handle puts it back."""
+
+    def __init__(self, ed, mode: "CodeMode"):
+        self._ed, self._mode = ed, mode
+
+    def __getattr__(self, name):
+        return getattr(self._ed, name)
+
+    def read(self, keep_cursor: bool = False):
+        got = self._ed.read(keep_cursor=keep_cursor or self._ed.cheap_read)
+        if got is not None and not self._ed.cheap_read and not keep_cursor and got[1] is not None:
+            self._mode._lost = got[1]
+        return got
+
+    def place(self, line, known=None):
+        self._mode._lost = None
+        return self._ed.place(line) if known is None else self._ed.place(line, known)
+
+    def write(self, text, cursor):
+        self._mode._lost = None
+        return self._ed.write(text, cursor)
+
+    def insert_below(self, lines, up):
+        self._mode._lost = None
+        return self._ed.insert_below(lines, up)
 
 
 def _ident(name: str) -> str:

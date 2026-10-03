@@ -189,3 +189,19 @@ class OtherEditsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CppHeadersTest(unittest.TestCase):
+    """3 Oct live: a new C++ file's main had no includes, so cin 'wasn't declared'."""
+
+    def test_added_when_needed(self):
+        code = "int main() {\n    int n;\n    cin >> n;\n    return 0;\n}"
+        out, added = ce.cpp_headers(code)
+        self.assertEqual(out.split("\n")[:3], ["#include <iostream>", "using namespace std;", ""])
+        self.assertEqual(added, 3)
+
+    def test_nothing_twice(self):
+        code = "#include <iostream>\nusing namespace std;\n\nint main() {\n    string s;\n    cout << s;\n}"
+        self.assertEqual(ce.cpp_headers(code), (code, 0))
+        self.assertEqual(ce.cpp_headers("int main() {\n    return 0;\n}")[1], 0)
+        self.assertEqual(ce.cpp_headers("#include <bits/stdc++.h>\nint main() { cout << 1; }")[1], 0)

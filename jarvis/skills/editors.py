@@ -211,7 +211,7 @@ class Editor:
         """The class a Java file holds by its name (BlueJ: the editor's class; VS Code: the file name)."""
         return "Main"
 
-    def read(self) -> tuple[str, int | None] | None:
+    def read(self, keep_cursor: bool = True) -> tuple[str, int | None] | None:
         """(the whole code, the cursor's 0-based line), or None when it can't be read."""
         raise NotImplementedError
 
@@ -239,7 +239,7 @@ class Editor:
         log.warning("Wrote %r but read back %r", text[:200], got[0][:200])
         return "Not done: the code in the editor didn't come out as I wrote it."
 
-    def place(self, line: int):
+    def place(self, line: int, known: int | None = None):
         """The cursor at the end of line `line` (0-based)."""
         self.go_to_line(line + 1)
         keys.press("end")
@@ -298,19 +298,74 @@ class VSCode(Editor):
         m = _LN_COL.match(self._status())
         return int(m.group(1)) if m else None
 
-    def read(self) -> tuple[str, int | None] | None:
+    def _wait_line(self, n: int, timeout: float = 1.5) -> bool:
+        """Until the status bar says the cursor is on line n (1-based). VS Code pastes a moment after Ctrl+V, and
+        its status bar follows ~0.1-0.2 s later (3 Oct live: a key pressed too soon landed on the wrong line)."""
+        deadline = time.monotonic() + timeout
+        while True:
+            if self.caret_line() == n:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+
+    def read(self, keep_cursor: bool = True) -> tuple[str, int | None] | None:
         line = self.caret_line()
         keys.press("ctrl+a")
-        time.sleep(0.05)
-        selected = "selected" in self._status()
         text = _copied()
-        keys.press("escape")
-        if line:
-            self.go_to_line(line)
-        if not text and selected:
-            log.warning("VS Code: the code was selected but nothing was copied")
-            return None  # never mistake a failed copy for an empty file (it would be written over)
+        if not text:
+            # an empty file, or a copy that failed? A failed copy must never look empty (it would be written over)
+            time.sleep(0.2)
+            if (line or 1) > 1 or "selected" in self._status():
+                keys.press("left")
+                log.warning("VS Code: the code was selected but nothing was copied")
+                return None
+        keys.press("left")  # the selection goes; the cursor is at the very top
+        if keep_cursor and line and line > 1:
+            self.place(line - 1, known=1)
         return text.replace("\r\n", "\n"), (line - 1 if line else None)
+
+    def place(self, line: int, known: int | None = None):
+        """The cursor to the end of line `line` (0-based): arrow keys for a few lines, else Go to line."""
+        now = known or self.caret_line()
+        steps = (line + 1 - now) if now else None
+        if steps is not None and abs(steps) <= 12:
+            if steps:
+                keys.press("down" if steps > 0 else "up", abs(steps))
+            keys.press("end")
+            if self._wait_line(line + 1, 0.8):
+                return
+        self.go_to_line(line + 1)
+        keys.press("end")
+        self._wait_line(line + 1, 0.8)
+
+    def insert_below(self, lines: list[str], up: int) -> bool:
+        before = self.caret_line()
+        keys.press("end")
+        if not _paste("\n" + "\n".join(lines)):
+            return False
+        if before and not self._wait_line(before + len(lines)):
+            log.warning("VS Code: the paste didn't land where expected")
+            return False
+        if up > 0:
+            keys.press("up", up)
+        keys.press("end")
+        if before:
+            self._wait_line(before + len(lines) - up, 0.8)
+        return True
+
+    def write(self, text: str, cursor: int) -> str:
+        """The whole code replaced (no reading back: copying it costs ~0.5 s; the paste is waited for)."""
+        keys.press("ctrl+a")
+        if not _paste(text if text else " "):
+            return "Not done: I couldn't put the code in (the clipboard is busy)."
+        if not text:
+            keys.press("ctrl+a")
+            keys.press("backspace")
+        if not self._wait_line(max(1, text.count("\n") + 1)):
+            return "Not done: VS Code didn't take the new code in time."
+        self.place(cursor)
+        return "ok"
 
     def go_to_line(self, n: int) -> str:
         keys.press("ctrl+g")
@@ -347,14 +402,14 @@ class BlueJ(Editor):
     def file_class(self) -> str:
         return self.cls.strip() or "Main"
 
-    def read(self) -> tuple[str, int | None] | None:
+    def read(self, keep_cursor: bool = True) -> tuple[str, int | None] | None:
         text = self.text()
         if text is None:
             return None
         line = self.caret_line()
         return text.replace("\r\n", "\n").replace("\r", "\n"), (line - 1 if line else None)
 
-    def place(self, line: int):
+    def place(self, line: int, known: int | None = None):
         """Arrow keys from the line the cursor is on (BlueJ's caret is readable): ~0.1 s, where its Go to line box
         took ~1 s (3 Oct live). The Go to line box only if the arrows didn't land."""
         now = self.caret_line()
