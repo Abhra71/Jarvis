@@ -8,14 +8,16 @@ Run the **whole PC by voice**: sit back and do ~99% of computer work reliably, f
 - AI is a **luxury** (free Groq + Gemini only). Everyday work runs in code.
 - Never: deleting, secret files (`.env`, keys), typing into VMware/Kali, sending or buying without a spoken yes.
 
-## Where we are (3 Oct, after Block 1)
+## Where we are (3 Oct, after Blocks 1 and 2)
 - Block 1 (trust) done and live-tested: background talk ignored, Share needs a yes, 8 live bugs fixed, the 20-task
-  reliability run at 99%. **Next: Block 2, coding mode.** Dream ~61%, daily-use feel ~36%.
+  reliability run at 99%.
+- Block 2 (coding mode) done and live-tested in scratch BlueJ/VS Code files. **Next: Block 3, speed.**
+  Dream ~64%, daily-use feel ~40% (coding mode not yet used by the user for real).
 
 ## Where we were (1 Oct)
 - Honest score: agent ~64%, **the dream overall ~60%**, but **daily-use feel ~30-35%** (the user: "I still won't
   use it as an app"). What's missing is trust: fewer confident wrong actions, human replies, speed on failures.
-- ~265 tests pass: `.venv\Scripts\python -m unittest discover tests`. Everything is committed and pushed to `main`.
+- ~310 tests pass (~45 s): `.venv\Scripts\python -m unittest discover tests`. Everything is committed and pushed to `main`.
 - Commit only when the tests pass (a failed run once got committed: check the last line says OK).
 
 ## Background batch (1 Oct, no screen used; all committed)
@@ -117,18 +119,26 @@ Full plan: ~/.claude/plans/yea-agent-industry-grade-adaptive-lampson.md. The use
 - Not done in Block 1: the user's BlueJ class "test" junk code (offer to clean it in Block 2); "Open Calculus"
   still goes to the AI (Did-you-mean didn't catch it).
 
-**Block 2: Controllable coding mode.** The user chose "write, then say it":
-- Short pattern lines go in at once and Jarvis says exactly what it wrote. Anything bigger is read out first and
-  written only after a yes.
-- "Undo" removes Jarvis's own last change, using its own record.
-- **Never leave broken code** (3 Oct: "wrap this inside a method" ignored syntax, so it felt like junk). After each
-  change: compile (BlueJ) or `g++ -fsyntax-only` (VS Code), plus a brace check before writing. On an error, fix it
-  once; otherwise undo and say so.
-- Structural edits (wrap in method/loop, rename) work on the whole file's structure, then compile.
-- "Fix the errors" compiles, fixes and compiles again.
-- A fixed command set; anything else gets "Say it again?".
-- A pop-up shows what was heard and what was written; a cheat sheet for the user.
-- Tests from the 30 Sep sentences.
+**Block 2: Controllable coding mode. DONE 3 Oct** (all committed; live in BlueJ + VS Code scratch files):
+- `jarvis/codeedit.py`: the whole file is edited by its structure (blocks found by matching braces, strings and
+  comments ignored). Statements go inside a method (cursor's, else Jarvis's last, else main, made if missing);
+  methods inside the class (C++: before main); a class/main that exists is never made again. wrap/move into main,
+  into a loop/if, into a new method (extract + call); rename; delete lines; C++ `#include`s and `using namespace std`
+  added when needed. Laid out in the file's own style (BlueJ braces on their own line).
+- `jarvis/codecheck.py`: javac (from BlueJ's jdk) / g++ (MSYS2) on a hidden copy, ~0.6-1 s. Moves, wraps, renames
+  and AI code are refused if they add a new error ("That would break the code (count isn't known there)…"); "fix
+  the errors" fixes a missing semicolon/brace in code, else the AI offers a small fix (yes first).
+- `jarvis/codemode.py`: the fixed command set (see `docs/coding-cheatsheet.html`, "show me the coding commands");
+  short pattern lines go in at once and are said back ("Added a for loop, i from 1 to n"); AI code is offered
+  first (pop-up) and written after a yes; undo/redo from Jarvis's own record (refused if the user edited since);
+  noise/unclear speech writes nothing (quiet pop-up); questions and normal requests go the normal way.
+- Editors: whole-file read/write (`Editor.read/write/place/insert_below`). BlueJ: UIA text + caret, cursor moved by
+  arrows (~0.1 s). VS Code: code read by copy (clipboard restored), caret from the status bar "Ln x, Col y", each
+  paste waited for. Speed live: BlueJ ~0.6-1 s per line, VS Code ~1.2-1.6 s (Block 3 can cut VS Code).
+- Fixed on the way: bringing a window that's already in front tapped Alt and opened VS Code's menu.
+- Tests: `tests/test_codeedit.py`, `test_codecheck.py` (real compilers), `test_codemode.py` (the 3 Oct session and
+  every 30 Sep sentence). The suite now takes ~45 s (compiler tests).
+- Open: offer to clean the user's own BlueJ class "test" (old junk code); not touched.
 
 **Block 3: Speed.** Cache snapshots, read the screen and plan in parallel, fail fast, more code plans. Targets: code
 ≤1.5 s, AI ≤4 s.
