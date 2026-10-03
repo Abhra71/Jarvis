@@ -76,4 +76,15 @@ Jarvis stops being "only for me" and becomes a product anyone in the world can u
   one-command install, requirements, FAQ. GitHub description, topics, tags; LICENSE, CONTRIBUTING, issue template.
 - **Every message clear, crisp, friendly**: spoken replies, pop-ups, wizard, errors, status page; commits and
   release notes as a short headline plus one plain line.
-- Ask the user then: public name/branding, and whether to keep git history or start a fresh public repo.
+- **A new name** (the user, 3 Oct): pick it together at refresh time (short, unique, free on GitHub/PyPI/domains,
+  not a trademark: "Jarvis" is Marvel's). The wake word follows the name (a custom wake-word model then).
+- **Same repo** (the user's decision): rename it on GitHub (old links redirect), clean it in place; history kept.
+- **Industry-grade must-haves** before going public:
+  - Releases: semantic versions, CHANGELOG, GitHub Releases with notes; a signed installer later (the EXE).
+  - Updates: built-in update check + one-command update; settings/recipes migrate between versions.
+  - Quality: CI on every push (GitHub Actions: tests + lint), badges; tests stay green; a smoke test per flagship.
+  - Reliability: crash reporting (opt-in, scrubbed), log rotation, safe mode, clean uninstall.
+  - Security: SECURITY.md (how to report), keys only in Credential Manager, dependency audit, no secrets in repo.
+  - Privacy: PRIVACY.md in plain words (what's collected, where, how to delete); everything opt-in.
+  - Community: LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, issue/PR templates, a docs page (GitHub Pages).
+  - Product: onboarding wizard, in-app "what can I say", accessibility (captions of replies), Windows 10 + 11 support.
