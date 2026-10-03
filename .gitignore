@@ -10,6 +10,7 @@ data/pw.json
 *.bin
 data/corrections.json
 data/heard-history.json
+data/ducked.json
 
 # live-test scratch files (the BlueJ project JarvisScratch, scratch.cpp, the live runner)
 scratch/

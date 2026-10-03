@@ -384,6 +384,7 @@ class Assistant:
     def run(self):
         try:
             self.start_dashboard()
+            volume.recover()  # apps left turned down by a Jarvis stopped mid-listen
             self.load_voice()
             self.mic.start()
             self.speaker.say("Jarvis online.")

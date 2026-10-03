@@ -1,5 +1,6 @@
 """System master volume through the Windows Core Audio API (pycaw)."""
 
+import json
 import logging
 import os
 from ctypes import POINTER, cast
@@ -7,6 +8,8 @@ from ctypes import POINTER, cast
 import comtypes
 from comtypes import CLSCTX_ALL
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+
+from jarvis.config import ROOT
 
 log = logging.getLogger(__name__)
 
@@ -100,6 +103,9 @@ def ensure_jarvis_audible():
 DUCK_TO = 0.12  # other apps play at 12% of their level while Jarvis listens
 
 
+_DUCKED = ROOT / "data" / "ducked.json"  # app -> its level, while ducked: a Jarvis killed mid-listen puts it back
+
+
 def duck() -> list:
     """Turn every other app down while Jarvis listens, like a smart speaker does. 30 Sep: a song playing in
     Brave was heard mixed with the user's voice, and most commands came out wrong. Returns what restore() needs."""
@@ -114,15 +120,57 @@ def duck() -> list:
             level = vol.GetMasterVolume()
             if level > DUCK_TO:
                 vol.SetMasterVolume(level * DUCK_TO, None)
-                saved.append((vol, level))
+                saved.append((vol, level, proc.name()))
     except Exception:
         log.debug("Couldn't turn other apps down", exc_info=True)
+    if saved:
+        try:
+            _DUCKED.write_text(json.dumps(_levels(saved)), encoding="utf-8")
+        except OSError:
+            pass
     return saved
 
 
+def _levels(saved: list) -> dict:
+    out = {}
+    for _, level, name in saved:
+        out[name] = max(level, out.get(name, 0))
+    return out
+
+
+def _raise_apps(levels: dict):
+    """Every sound of these apps that is below its saved level goes back up. 3 Oct: YouTube opened in a new tab
+    just before a follow-up; Chrome's new sound started while ducked (at 12%), and only the old one was restored."""
+    me = os.getpid()
+    for session in AudioUtilities.GetAllSessions():
+        proc = session.Process
+        if not proc or proc.pid == me or proc.name() not in levels:
+            continue
+        vol = session.SimpleAudioVolume
+        if vol.GetMasterVolume() < levels[proc.name()] - 0.01:
+            vol.SetMasterVolume(levels[proc.name()], None)
+            log.info("Turned %s back up to %d%%", proc.name(), round(levels[proc.name()] * 100))
+
+
 def restore(saved: list):
-    for vol, level in saved:
+    for vol, level, _ in saved:
         try:
             vol.SetMasterVolume(level, None)
         except Exception:
             log.debug("Couldn't turn an app back up", exc_info=True)
+    if saved:
+        try:
+            _raise_apps(_levels(saved))
+        except Exception:
+            log.debug("Couldn't check the apps' sounds", exc_info=True)
+        _DUCKED.unlink(missing_ok=True)
+
+
+def recover():
+    """At start: if Jarvis was stopped while apps were turned down, turn them back up."""
+    try:
+        if _DUCKED.exists():
+            _raise_apps(json.loads(_DUCKED.read_text(encoding="utf-8")))
+            _DUCKED.unlink(missing_ok=True)
+    except Exception:
+        log.debug("Couldn't put the apps' sound back", exc_info=True)
