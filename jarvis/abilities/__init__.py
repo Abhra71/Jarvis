@@ -59,7 +59,7 @@ def match(text: str) -> tuple[Ability, str | None] | None:
 
 
 # Abilities that never press keys or click in the front window: fine even with a virtual machine in front.
-NO_HANDS = {"find_newest", "open_file_here", "open_settings"}
+NO_HANDS = {"find_newest", "open_file_here", "open_settings", "coding_help"}
 # Abilities whose own "Not done: …" is the answer: they did the whole job in code, and the AI can only do worse.
 # 1 Oct: "Connect Bluetooth to Rockerz 480" failed in code (headphones off), then went to the AI, which pressed
 # Esc and hunted for a "Bluetooth" button.

@@ -123,3 +123,13 @@ def open_file(value: str):
         if name.split(".")[0].lower() in desktop.front_window().lower():
             return f"Opened {name}."
     return f"Not done: there's no file like {name} in this project."
+
+
+@ability("coding_help", "show the coding mode commands (a cheat sheet page)",
+         r"(?:show|open|give)(?: me)? (?:the |my )?(?:coding|code) (?:mode )?(?:commands|cheat ?sheet|help)",
+         r"what can i say in (?:coding|code) mode", r"(?:coding|code) (?:mode )?(?:commands|cheat ?sheet|help)")
+def coding_help():
+    import os
+    from ..config import ROOT
+    os.startfile(str(ROOT / "docs" / "coding-cheatsheet.html"))
+    return "Here are the coding commands."
