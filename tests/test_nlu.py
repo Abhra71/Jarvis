@@ -44,3 +44,21 @@ class ParseTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VolumeOnlyWhenMeantTest(unittest.TestCase):
+    """3 Oct: 'Click on Sound 3 View Lecture' (PW's chapter "Sound") set the PC's volume to 3%."""
+
+    def test_things_on_screen_called_sound_are_not_volume(self):
+        for said in ("Click on Sound 3 View Lecture.", "Open Sound lecture 3", "Witsapp, The Current Window, Open, "
+                     "Sound, Lecture 3.", "Sound chapter 4", "Open the sound settings", "Scroll down to sound 3",
+                     "Play the sound of rain"):
+            intent = parse(said)
+            self.assertFalse(intent and intent.name in ("set_volume", "change_volume"), said)
+
+    def test_volume_commands_still_work(self):
+        for said, level in (("Set volume to 40%.", 40), ("Volume 30", 30), ("sound 20", 20), ("set the sound to 15", 15),
+                            ("volume at 70 percent", 70), ("50 percent volume", 50), ("Turn the volume to 25", 25)):
+            self.assertEqual(parse(said), Intent("set_volume", {"level": level}), said)
+        self.assertEqual(parse("turn the sound down"), Intent("change_volume", {"direction": -1}))
+        self.assertEqual(parse("volume up"), Intent("change_volume", {"direction": 1}))

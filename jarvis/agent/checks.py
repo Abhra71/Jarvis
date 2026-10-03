@@ -208,6 +208,14 @@ def auto_check(tool: str, args: dict, check: Check | None, before: Snapshot) -> 
         return None  # "click Cancel, expect Cancel" (29 Sep): the thing clicked isn't the result
     if tool in ("press_key", "type_text") and check.kind in ("text", "element") and not check.negate:
         return None  # a guessed label ("text: Playing", "text: commented") after keys: not evidence
+    if tool in ("scroll", "find_on_page") and check.kind in ("text", "element") and not check.negate:
+        try:
+            if holds(check, before):
+                # 3 Oct: "Scroll down" checked "text: CH - 04 Sound", the item clicked just before: scrolling moved
+                # it off screen, so a scroll that worked was called stuck. Something already in view proves nothing.
+                return None
+        except Exception:
+            return None
     return check
 
 

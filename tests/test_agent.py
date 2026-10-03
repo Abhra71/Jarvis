@@ -457,6 +457,16 @@ class HonestyTest(unittest.TestCase):
         self.assertIsNone(checks.auto_check("click_element", {"name": "Cancel"}, c, snap))
         self.assertIsNone(checks.auto_check("press_key", {"key": "k"}, checks.parse("text: Playing"), snap))
 
+    def test_a_scroll_is_not_checked_by_what_was_already_in_view(self):
+        """3 Oct: 'Scroll down' after clicking 'CH - 04 Sound' checked that it was still visible: a working
+        scroll was called stuck."""
+        snap = context.take(self.desk.readers())
+        seen = checks.parse("text: CH - 04 Sound")
+        with mock.patch.object(checks, "holds", return_value=True):
+            self.assertIsNone(checks.auto_check("scroll", {"direction": "down"}, seen, snap))
+        with mock.patch.object(checks, "holds", return_value=False):  # not in view yet: scrolling to find it
+            self.assertEqual(checks.auto_check("scroll", {"direction": "down"}, seen, snap), seen)
+
     def test_closing_one_of_two_windows_counts(self):
         self.desk.windows = ["chrome: A - Google Chrome", "chrome: B - Google Chrome"]
         before = context.take(self.desk.readers())

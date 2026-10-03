@@ -52,6 +52,9 @@ def words_to_digits(text: str) -> str:
 
 
 _FILLER = re.compile(r"^(hey |ok |okay )?(jarvis[, ]*)?(please |can you |could you |would you )*")
+# Words that make "sound"/"volume" a name on screen (a chapter, a setting, a video), not the PC's volume.
+_ON_SCREEN = re.compile(r"\b(click|open|play|select|lecture|chapter|lesson|video|tab|page|scroll|settings?|"
+                        r"button|link|mark|watch|view|notes?|class|of|the sound of)\b")
 _DURATION = re.compile(r"(\d+)\s*(hours?|hrs?|minutes?|mins?|seconds?|secs?)\b")
 _UNIT_SECONDS = {"h": 3600, "m": 60, "s": 1}
 
@@ -174,10 +177,14 @@ def parse(raw: str) -> Intent | None:
         return Intent("mute", {"on": False})
     if re.search(r"\bmute\b", text):
         return Intent("mute", {"on": True})
-    if "volume" in text or "sound" in text or text in ("louder", "quieter"):
-        level = re.search(r"\b(\d{1,3})\b", text)
+    # 3 Oct: "Click on Sound 3 View Lecture" (PW's chapter "Sound") set the PC's volume to 3%. A sentence about
+    # something on screen is never a volume command, and the number must belong to the volume.
+    if ("volume" in text or "sound" in text or text in ("louder", "quieter")) and not _ON_SCREEN.search(text):
+        level = re.fullmatch(r"(?:(?:set|turn|change|put|make|bring)\s+(?:the\s+|my\s+)?)?(?:volume|sound)"
+                             r"(?:\s+level)?(?:\s+(?:to|at|up to|down to))?\s+(\d{1,3})\s*(?:percent|%)?"
+                             r"|(\d{1,3})\s*(?:percent|%)?\s+(?:volume|sound)", text.strip(" .!?"))
         if level:
-            return Intent("set_volume", {"level": min(int(level.group(1)), 100)})
+            return Intent("set_volume", {"level": min(int(level.group(1) or level.group(2)), 100)})
         if re.search(r"\b(up|increase|raise|louder|higher)\b", text):
             return Intent("change_volume", {"direction": 1})
         if re.search(r"\b(down|decrease|lower|reduce|quieter)\b", text):
