@@ -46,8 +46,10 @@ class Tool:
 S, I, B = "STRING", "INTEGER", "BOOLEAN"
 
 # Hard safety check in code (not just an instruction to the AI): these need the user's spoken "yes".
+# 2 Oct: "Send it for me" clicked Claude's Share button with no yes: sharing is sending.
 _RISKY_CLICK = re.compile(
-    r"\b(send|post|publish|tweet|buy|purchase|pay|payment|checkout|check out|place order|order now|subscribe|"
+    r"\b(send|share|forward|invite|post|publish|tweet|buy|purchase|pay|payment|checkout|check out|place order|"
+    r"order now|subscribe|unsubscribe|accept|agree|approve|"
     r"delete|remove|trash|sign in|log in|login|submit|transfer|confirm|donate|install|resign|abort)\b", re.I)
 _CHAT_APPS = ("whatsapp", "telegram", "discord", "slack", "messenger", "instagram", "gmail", "outlook", "teams",
               "signal", "mail")

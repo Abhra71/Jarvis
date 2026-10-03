@@ -74,9 +74,8 @@ def set_brightness(value: str):
 
 
 @ability("connect_bluetooth", "connect a Bluetooth device",
-         r"(?:connect|pair)(?!.*\b(?:wi ?fi|wi-fi|internet|network|vpn|hotspot)\b)(?: to)? (?:my |the )?(?P<value>.+?)"
-         r"(?: headphones| earphones| earbuds| speaker)?"
-         r"(?: (?:with|via|over|on) bluetooth)?",
+         r"(?:connect|pair)(?!.*\b(?:wi ?fi|wi-fi|internet|network|vpn|hotspot)\b)(?: to)? (?:my |the )?(?:blue ?tooth (?:to|with) (?:my |the )?)?"
+         r"(?P<value>.+?)(?: headphones| earphones| earbuds| speaker)?(?: (?:with|via|over|on) bluetooth)?",
          value="device")
 def connect_bluetooth(said: str):
     return quick.connect_device(said, True)

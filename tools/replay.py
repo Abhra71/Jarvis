@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT))
 
 import logging  # noqa: E402
 
-from jarvis import abilities, nlu, router  # noqa: E402
+from jarvis import abilities, addressed, nlu, router  # noqa: E402
 from jarvis.agent import plan as planmod  # noqa: E402
 from jarvis.assistant import (_CODING_OFF, _CODING_ON, _DICTATE_ON, _GAMING_OFF, _GAMING_ON,  # noqa: E402
                               _NEEDS_AI, _STOP)
@@ -70,6 +70,9 @@ def route(text: str, unsure: bool, apps: AppLauncher) -> tuple[str, str]:
     cleaned = clean_transcript(text)
     if not cleaned:
         return "ignored", "noise"
+    why = addressed.background_reason(cleaned, -1.0 if unsure else None)  # the real confidence isn't in every log
+    if why:
+        return "ignored", why
     if _STOP.fullmatch(" ".join(cleaned.lower().strip(" .!?").split())):
         return "stop", ""
     if youtube.understands(cleaned, unsure):

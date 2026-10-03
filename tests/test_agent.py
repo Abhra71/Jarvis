@@ -904,6 +904,17 @@ class GmailFlowTest(unittest.TestCase):
         self.assertEqual(needs_confirmation("do", {"ability": "gmail_send"}, lambda: "chrome: Gmail"), "send the email")
         self.assertIsNone(needs_confirmation("do", {"ability": "gmail_draft", "value": "x"}, lambda: "chrome: Gmail"))
 
+    def test_share_and_friends_need_a_yes(self):
+        """2 Oct, 11:51: 'Send it for me' clicked Claude's Share button with no yes."""
+        from jarvis.skills import needs_confirmation
+        front = lambda: "chrome: Claude"  # noqa: E731
+        for target in ("Share", "Share chat", "Forward", "Accept invitation", "I agree", "Unsubscribe"):
+            with self.subTest(target=target):
+                self.assertIsNotNone(needs_confirmation("click_element", {"target": target}, front))
+        for target in ("New chat", "Search", "Shorts", "Sharpen"):
+            with self.subTest(target=target):
+                self.assertIsNone(needs_confirmation("click_element", {"target": target}, front))
+
     def test_draft_then_ask_then_send_on_yes(self):
         desk = FakeDesktop()
 

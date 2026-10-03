@@ -18,7 +18,7 @@ from . import coding
 from .skills import Skills, desktop, editors, elements, keys, request_parts, site_url, sites
 from .stt import Transcriber
 from .tts import Speaker
-from . import corrections, tasklog
+from . import addressed, corrections, tasklog
 from .usage import usage
 from .wakeword import WakeWordDetector
 
@@ -92,6 +92,8 @@ def redact_secrets(reply: str) -> str:
 
 
 # Things Whisper tends to "hear" in silence or background noise.
+_NOT_DONE = re.compile(r"^Not done:\s*")
+
 _HALLUCINATIONS = {"", "you", "thank you", "thanks for watching", "bye", "okay", "hmm"}
 
 
@@ -289,7 +291,7 @@ class Assistant:
             return site
         # Built-in abilities and phrases learned earlier: instant, no AI.
         reply = abilities.handle(text, unsure)
-        if reply and not reply.startswith(("Not done", "Unknown ability")):
+        if reply and (not reply.startswith(("Not done", "Unknown ability")) or abilities.last_hit in abilities.FINAL):
             self.brain.remember(text, reply)
             return "ability", reply
 
@@ -524,6 +526,7 @@ class Assistant:
         listen = self.config["listen"]
         followup = {**listen, "no_speech_timeout": listen.get("followup_seconds", 5)}
         first = True
+        ignored = 0  # sentences in a row that weren't said to Jarvis
 
         while not self.stopping.is_set():
             if not first:
@@ -550,10 +553,27 @@ class Assistant:
                 return
 
             self.heard = dict(getattr(self.stt, "last", None) or {}) or None  # for the task log
+            why = None if self.dictating else addressed.background_reason(
+                text, (self.heard or {}).get("confidence"), followup=not first)
+            if why:
+                # 1 Oct: a Hindi talk in the room became 8 "requests". Not said to Jarvis: say nothing, and after
+                # two of them go back to sleep.
+                ignored += 1
+                log.info("Ignoring %r: %s (%d in a row)", text[:80], why, ignored)
+                tasklog.write({"said": text, "route": "ignored", "result": "ignored", "why": why, "seconds": 0,
+                               **({"hearing": self.heard} if self.heard else {})})
+                self.heard = None
+                if ignored >= 2:
+                    return
+                first = False
+                self.mic.drain()
+                self._set(State.LISTENING)
+                continue
+            ignored = 0
             reply = self._handle_while_watching(text, self.stt.unsure)
             if reply:  # dictation types quietly
                 self._set(State.SPEAKING)
-                self.speaker.say(reply)
+                self.speaker.say(_NOT_DONE.sub("", reply))  # "Not done: X didn't connect." is said as a person would
 
             if self.skills.cancel.is_set():
                 # "Hey Jarvis" while busy: stopped, now take the new command with a full listening window.
