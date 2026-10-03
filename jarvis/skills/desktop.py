@@ -90,7 +90,7 @@ def find_window(app: str) -> tuple[int, str, str] | None:
     app = app.lower().strip()
     windows = _app_windows()
     if app in ("browser", "the browser", "web browser"):
-        return next((w for w in windows if w[1] in BROWSERS), None)
+        return next((w for w in windows if w[1] in BROWSERS and not is_profile_picker(w[2])), None)
 
     exe = _EXE_ALIASES.get(app)
     if exe:
@@ -205,9 +205,14 @@ def list_open_windows(limit: int = 12) -> str:
 
 # ---- browser and keyboard ------------------------------------------------------
 
+def is_profile_picker(title: str) -> bool:
+    """Chrome's "Who's using Chrome?" window: a browser process, but no page to type an address into."""
+    return title == "Google Chrome"
+
+
 def _front_browser() -> int | None:
     fg = win32gui.GetForegroundWindow()
-    if _process_name(fg) in BROWSERS:
+    if _process_name(fg) in BROWSERS and not is_profile_picker(win32gui.GetWindowText(fg)):
         return fg
     w = find_window("browser")
     if w:

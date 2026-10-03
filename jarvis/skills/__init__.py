@@ -217,7 +217,7 @@ class Skills:
         tools = [
             Tool("open_app", "Launch a desktop app.",
                  {"name": (S, "e.g. 'notepad', 'whatsapp'", True, None)},
-                 lambda name: self.apps.open(name)),
+                 lambda name: self._open_app(name)),
             Tool("window", "Focus/minimize/maximize/restore/close an app window, or close_all of that app's windows "
                            "('browser' = any browser).",
                  {"app": (S, "", True, None),
@@ -372,6 +372,13 @@ class Skills:
     def _youtube(self, command: str) -> str:
         from .sites import youtube
         return youtube.command(command, self.browser)
+
+    def _open_app(self, name: str) -> str:
+        # Plain Chrome opens "Who's using Chrome?" (3 Oct reliability run: the next request typed an address
+        # into it). Chrome is the user's main profile unless they name another.
+        if re.fullmatch(r"(?:google )?chrome(?: browser)?", name.lower().strip()):
+            return self.browser.open(None, "main")
+        return self.apps.open(name)
 
     def _click_element(self, double: bool) -> str:
         result = elements.click(self._element, double)

@@ -65,8 +65,13 @@ def _wait(pred, timeout: float, step: float = 0.3) -> bool:
         if pred():
             return True
         checks += 1
-        if checks % 3 == 0 and _form_in_way():  # every ~1 s: the form check costs ~0.05 s
-            return False
+        if checks % 3 == 0:  # every ~1 s: the pop-up check costs ~0.05 s
+            p = popups.find()
+            if p and popups.is_notice(p.title):
+                # 3 Oct: the streak screen covered the page for the whole wait. A notice is closed at once.
+                log.info("PW: %s", popups.close())
+            elif p:
+                return False  # a form: the caller asks the user
         if time.monotonic() >= deadline:
             return False
         time.sleep(step)
@@ -135,7 +140,12 @@ def open_study() -> str:
         if w and w[1] in desktop.BROWSERS:
             desktop._focus(w[0])
         elif not desktop._front_browser():
-            return "Not done: no browser window is open for PW."
+            # No browser page open (3 Oct: only Chrome's profile picker was): PW is logged in on the main profile.
+            from ...config import load_config
+            from ..browser import Browser
+            Browser(load_config().get("chrome_profiles", {})).open(STUDY, "main")
+            if not _wait(lambda: (desktop.current_url() or "").startswith("https://pw.live"), 8):
+                return "Not done: PW didn't open in Chrome."
     desktop.address_bar(STUDY)
     ok = _wait(lambda: (desktop.current_url() or "").startswith(STUDY) and _has_text("your batch"), 10)
     if not ok:

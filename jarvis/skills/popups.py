@@ -56,20 +56,26 @@ def find(hwnd: int | None = None) -> Popup | None:
     root = uia.ElementFromHandle(hwnd or win32gui.GetForegroundWindow())
     texts = root.FindAll(UIA.TreeScope_Descendants,
                          uia.CreatePropertyCondition(UIA.UIA_ControlTypePropertyId, UIA.UIA_TextControlTypeId))
+    first_form = None
     for i in range(texts.Length):
         try:
             e = texts.GetElement(i)
             name = " ".join((e.CurrentName or "").split())
             if not name or len(name) > 80:
                 continue
+            notice = NOTICES.match(name)
             form = TITLES.search(name) and e.CurrentLocalizedControlType == "heading"
-            if (form or NOTICES.match(name)) and not e.CurrentIsOffscreen:
+            if (form or notice) and not e.CurrentIsOffscreen:
                 l, t, r, b = _rect(e)
                 if r - l > 4 and b - t > 4:
-                    return Popup(name, (l, t, r, b), e)
+                    if notice:
+                        # 3 Oct: PW's streak screen sat on top of the feedback form; the form was "closed"
+                        # (its X is under the notice) and failed. A notice is on top: it goes first.
+                        return Popup(name, (l, t, r, b), e)
+                    first_form = first_form or Popup(name, (l, t, r, b), e)
         except COMError:
             continue  # the page changed while it was read (the pop-up just closed)
-    return None
+    return first_form
 
 
 def title() -> str:

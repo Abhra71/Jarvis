@@ -201,9 +201,19 @@ class VoiceTestFixesTest(unittest.TestCase):
             self.assertTrue(s.call("press_key", {"key": "enter"}).startswith("Not allowed"))
             self.assertTrue(s.call("type_text", {"text": "ls"}).startswith("Not allowed"))
         send.assert_not_called()
-        s.apps.open.return_value = "Opening Chrome."
+        s.apps.open.return_value = "Opening Notepad."
         with mock.patch("jarvis.skills.desktop.front_window", return_value="vmware: Kali"):
-            self.assertEqual(s.call("open_app", {"name": "chrome"}), "Opening Chrome.")  # switching away is fine
+            self.assertEqual(s.call("open_app", {"name": "notepad"}), "Opening Notepad.")  # switching away is fine
+
+    def test_chrome_opens_the_main_profile_not_the_picker(self):
+        """3 Oct: plain Chrome showed "Who's using Chrome?", and the next request typed into it."""
+        s = _skills()
+        s.browser.open.return_value = "Opened Chrome in your main profile."
+        self.assertEqual(s.call("open_app", {"name": "Google Chrome"}), "Opened Chrome in your main profile.")
+        s.browser.open.assert_called_once_with(None, "main")
+        from jarvis.skills import desktop
+        self.assertTrue(desktop.is_profile_picker("Google Chrome"))
+        self.assertFalse(desktop.is_profile_picker("Example Domain - Google Chrome"))
 
     def test_groq_retries_a_malformed_tool_call(self):
         from jarvis.groq_backup import GroqBackup
