@@ -617,20 +617,30 @@ class _Tracked:
 
     def read(self, keep_cursor: bool = False):
         got = self._ed.read(keep_cursor=keep_cursor or self._ed.cheap_read)
-        if got is not None and not self._ed.cheap_read and not keep_cursor and got[1] is not None:
-            self._mode._lost = got[1]
+        if got is not None and not self._ed.cheap_read and not keep_cursor:
+            self._top = True  # VS Code: reading left the cursor on line 1 (its status bar says so ~0.1 s later)
+            if got[1] is not None:
+                self._mode._lost = got[1]
         return got
 
     def place(self, line, known=None):
         self._mode._lost = None
+        if known is None and getattr(self, "_top", False):
+            known = 1
+        self._top = False
         return self._ed.place(line) if known is None else self._ed.place(line, known)
 
+    def caret_line(self):
+        if getattr(self, "_top", False):
+            return 1
+        return self._ed.caret_line()
+
     def write(self, text, cursor):
-        self._mode._lost = None
+        self._mode._lost, self._top = None, False
         return self._ed.write(text, cursor)
 
     def insert_below(self, lines, up):
-        self._mode._lost = None
+        self._mode._lost, self._top = None, False
         return self._ed.insert_below(lines, up)
 
 

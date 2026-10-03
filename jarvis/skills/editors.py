@@ -71,14 +71,19 @@ def _copied() -> str:
     return text
 
 
-def _paste(text: str) -> bool:
+def _paste(text: str, until=None) -> bool:
+    """Paste `text`, then give the user's clipboard back. `until()`: waits for the editor to show the paste (VS Code
+    reads the clipboard late); the clipboard is restored only after it, never before the editor has read it."""
     before = _clip_get()
     _clip_set(text)
-    seq = cb.GetClipboardSequenceNumber()
     keys.press("ctrl+v")
-    time.sleep(0.25)
+    if until is None:
+        time.sleep(0.25)
+        ok = True
+    else:
+        ok = bool(until())
     _clip_set(before)
-    return cb.GetClipboardSequenceNumber() != seq
+    return ok
 
 
 def _is_comment(text: str) -> bool:
@@ -329,9 +334,11 @@ class VSCode(Editor):
         """The cursor to the end of line `line` (0-based): arrow keys for a few lines, else Go to line."""
         now = known or self.caret_line()
         steps = (line + 1 - now) if now else None
-        if steps is not None and abs(steps) <= 12:
-            if steps:
-                keys.press("down" if steps > 0 else "up", abs(steps))
+        if steps is not None and abs(steps) <= 90:  # arrows are ~10 ms each now; Go to line takes ~0.7 s
+            while steps:
+                n = max(-30, min(30, steps))
+                keys.press("down" if n > 0 else "up", abs(n))
+                steps -= n
             keys.press("end")
             if self._wait_line(line + 1, 0.8):
                 return
@@ -342,9 +349,9 @@ class VSCode(Editor):
     def insert_below(self, lines: list[str], up: int) -> bool:
         before = self.caret_line()
         keys.press("end")
-        if not _paste("\n" + "\n".join(lines)):
-            return False
-        if before and not self._wait_line(before + len(lines)):
+        landed = _paste("\n" + "\n".join(lines),
+                        until=(lambda: self._wait_line(before + len(lines))) if before else None)
+        if not landed:
             log.warning("VS Code: the paste didn't land where expected")
             return False
         if up > 0:
@@ -357,13 +364,11 @@ class VSCode(Editor):
     def write(self, text: str, cursor: int) -> str:
         """The whole code replaced (no reading back: copying it costs ~0.5 s; the paste is waited for)."""
         keys.press("ctrl+a")
-        if not _paste(text if text else " "):
-            return "Not done: I couldn't put the code in (the clipboard is busy)."
+        if not _paste(text if text else " ", until=lambda: self._wait_line(max(1, text.count("\n") + 1))):
+            return "Not done: VS Code didn't take the new code in time."
         if not text:
             keys.press("ctrl+a")
             keys.press("backspace")
-        if not self._wait_line(max(1, text.count("\n") + 1)):
-            return "Not done: VS Code didn't take the new code in time."
         self.place(cursor)
         return "ok"
 

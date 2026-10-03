@@ -108,9 +108,18 @@ def check(keys: str, front: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+_REPEATABLE = re.compile(r"\{(UP|DOWN|LEFT|RIGHT|HOME|END|PGUP|PGDN|TAB|BACKSPACE|DELETE)\}")
+
+
 def press(keys: str, times: int = 1) -> str:
     presses = parse(keys)
-    for _ in range(max(1, min(int(times or 1), 30))):
-        for k in presses:
-            keyboard.send_keys(k, with_spaces=True, vk_packet=False)
+    n = max(1, min(int(times or 1), 30))
+    if n > 1 and len(presses) == 1 and _REPEATABLE.fullmatch(presses[0]):
+        # One call with a short pause: pywinauto waits 50 ms after every key by default, so moving 20 lines took
+        # over a second (3 Oct speed pass); 10 ms per key is still far slower than a person holding the key.
+        keyboard.send_keys(presses[0][:-1] + f" {n}}}", with_spaces=True, vk_packet=False, pause=0.01)
+    else:
+        for _ in range(n):
+            for k in presses:
+                keyboard.send_keys(k, with_spaces=True, vk_packet=False, pause=0.02)  # was 50 ms per key
     return f"Pressed {keys}" + (f" {times} times." if times and times > 1 else ".")
