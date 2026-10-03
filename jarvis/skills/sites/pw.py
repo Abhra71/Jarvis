@@ -215,9 +215,37 @@ def _subject_cards(lines) -> list[tuple[str, tuple, int]]:
     return cards
 
 
+def _subject_fast(subject: str) -> str | None:
+    """A subject opened before: straight to its remembered address (3 Oct: the click-through took ~7 s, mostly
+    waiting for two pages). None when it isn't remembered or didn't open (then the long way)."""
+    place = _places().get(f"subject:{subject}")
+    if not isinstance(place, dict) or not place.get("url"):
+        return None
+    if not _on_pw():
+        w = desktop.find_window("physics wallah")
+        if w and w[1] in desktop.BROWSERS:
+            desktop._focus(w[0])
+        elif not desktop._front_browser():
+            return None
+    want = place["url"].split("?")[0]
+    desktop.address_bar(place["url"])
+    if not _wait(lambda: (desktop.current_url() or "").split("?")[0] == want, 6):
+        form = _form_in_way()
+        if form:
+            return f"Not done: the {form} is over the page. Shall I close it, or do you want to fill it in?"
+        log.info("PW: the remembered %s page didn't open; going the long way", subject)
+        return None
+    _clear_notices()
+    note = f" There's also {place['other']}." if place.get("other") else ""
+    return f"Opened {place.get('name') or subject.capitalize()}.{note}"
+
+
 @_forms_first
 def open_subject(subject: str) -> str:
     subject = " ".join(subject.lower().split())
+    fast = _subject_fast(subject)
+    if fast:
+        return fast
     why = _all_classes()
     if why:
         return why
@@ -240,6 +268,8 @@ def open_subject(subject: str) -> str:
         return f"Not done: {name} didn't open."
     others = [c[0] for c in cards[1:]]
     note = f" There's also {others[0]}." if others else ""
+    _remember_place(f"subject:{subject}", {"url": desktop.current_url(), "name": name,
+                                            "other": others[0] if others else ""})
     return f"Opened {name}.{note}"
 
 
@@ -264,7 +294,7 @@ def _places() -> dict:
         return {}
 
 
-def _remember_place(name: str, url: str):
+def _remember_place(name: str, url):
     import json
     places = {**_places(), name: url}
     try:
@@ -319,12 +349,23 @@ def _label_matches(label: str, subject: str, year: str) -> bool:
 @_forms_first
 def open_khazana(request: str = "") -> str:
     """'khazana' / 'khazana chemistry' / 'khazana chemistry 2026' / 'khazana sunil sir organic chemistry'."""
-    why = _khazana_home()
-    if why:
-        return why
     said = " ".join(request.lower().split())
     subject = subject_in(said)
     year = (re.search(r"\b20[2-3]\d\b", said) or [""])[0]
+    course = _places().get(f"khazana:{subject.split(' by ')[0]}:{year}") if subject else None
+    if isinstance(course, dict) and course.get("url"):
+        # 3 Oct: home, look, scroll, look, then search took ~7 s. A course opened before goes straight there.
+        if not _on_pw():
+            w = desktop.find_window("physics wallah")
+            if w and w[1] in desktop.BROWSERS:
+                desktop._focus(w[0])
+        desktop.address_bar(course["url"])
+        if _wait(lambda: "khazana-topics" in (desktop.current_url() or ""), 6):
+            _clear_notices()
+            return f"Opened Khazana {course.get('name') or subject}."
+    why = _khazana_home()
+    if why:
+        return why
     if not subject:
         return "Opened Khazana."
     base = subject.split(" by ")[0]
@@ -340,6 +381,8 @@ def open_khazana(request: str = "") -> str:
                 if views:
                     _click_at(views[0].rect)
                     if _wait(lambda: "khazana-topics" in (desktop.current_url() or ""), 6):
+                        _remember_place(f"khazana:{base}:{year}", {"url": desktop.current_url(),
+                                                                    "name": ln.text.strip()})
                         return f"Opened Khazana {ln.text.strip()}."
         if attempt == 0:  # below the fold in a narrow window: scroll down once and look again
             desktop.browser_action("scroll_down")

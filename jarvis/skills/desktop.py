@@ -289,11 +289,53 @@ def _browser_tabs() -> list[tuple[int, str, object]]:
     for hwnd, proc, _ in _app_windows():
         if proc not in BROWSERS:
             continue
-        found = uia.ElementFromHandle(hwnd).FindAll(UIA.TreeScope_Descendants, is_tab)
+        strip = _tab_strip(hwnd)
+        if strip is not None:
+            found = strip.FindAll(UIA.TreeScope_Children, is_tab)
+        else:
+            found = uia.ElementFromHandle(hwnd).FindAll(UIA.TreeScope_Descendants, is_tab)
         for i in range(found.Length):
             el = found.GetElement(i)
             tabs.append((hwnd, el.CurrentName, el))
     return tabs
+
+
+_strips: dict[int, object] = {}
+
+
+def _tab_strip(hwnd: int):
+    """The browser's own tab strip, found without walking the web page (3 Oct: on a playing YouTube page every
+    search through the page took ~1 s, and closing one tab searched six times; the page's own "All / For you"
+    chips even counted as tabs). Remembered per window."""
+    UIA, uia = _uia()
+    el = _strips.get(hwnd)
+    if el is not None:
+        try:
+            el.CurrentControlType  # still there?
+            return el
+        except Exception:
+            _strips.pop(hwnd, None)
+    walker = uia.ControlViewWalker
+    level = [uia.ElementFromHandle(hwnd)]
+    for _ in range(9):  # the strip is a few levels down; the page is never entered
+        nxt = []
+        for node in level:
+            child = walker.GetFirstChildElement(node)
+            while child:  # a NULL pointer (no more children) is falsy
+                try:
+                    kind = child.CurrentControlType
+                except Exception:
+                    kind = None
+                if kind == UIA.UIA_TabControlTypeId:
+                    _strips[hwnd] = child
+                    return child
+                if kind != UIA.UIA_DocumentControlTypeId:
+                    nxt.append(child)
+                child = walker.GetNextSiblingElement(child)
+        level = nxt
+        if not level:
+            break
+    return None
 
 
 def _matching_tabs(want: str) -> list[tuple[int, tuple]]:
