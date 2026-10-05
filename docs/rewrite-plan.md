@@ -130,6 +130,27 @@ No single model is used until it fails. Each kind of job is assigned to the mode
 4. **Re-run the benchmark** when a provider changes its models or limits, and after each trial (new real sentences).
    The chain changes only when the numbers say so.
 
+## Commitments added 5 Oct (the user's challenge: "AI use must fall drastically"; "it couldn't delete a BlueJ class")
+- **AI use must fall, measured daily** on the status page as AI calls per request, and requests with 0 AI.
+  Trial baseline: 0.76 calls per request, 44% with no AI.
+
+  | Period | Calls per request | Requests with 0 AI |
+  |---|---|---|
+  | Week 1 | ≤ 0.6 | ≥ 50% |
+  | Week 2 | ≤ 0.3 | ≥ 70% |
+  | Month 1 | ≤ 0.15 | ≥ 85% |
+
+  The mechanism is recipes plus a local matcher (Phase 3). The OCR or text changes only made calls cheaper; they
+  never reduced the number of calls.
+- **Hands have every basic a person has, in any app:** left/right/double click, pop-up and context menus read and
+  used, drag, keyboard menus. The 5 Oct log shows the reason: Jarvis had no right-click, so "delete class Oval"
+  could never work.
+- **Safety means ask, never block.** Delete, send, buy and post get a spoken yes, then are done. A rule that forbids
+  an action the user asked for (like the old "BlueJ's Delete is never clicked") is a bug. Only secrets files
+  (.env, keys) stay off-limits.
+- **Live pass/fail checks for Phase 1:** in the scratch BlueJ project, "delete the classes Oval and Cone" (with a
+  yes) and "open the class Test" must work.
+
 ## How progress is measured
 - **The gold set.** Every real sentence the user has said: 480 before the trial and all from the trial. Each one has
   what should happen written down. Coding ones must produce code that compiles and matches.
