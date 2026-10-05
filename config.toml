@@ -17,6 +17,7 @@ vad_aggressiveness = 2       # 0-3, higher = more strict about what counts as sp
 followup_seconds = 5         # after answering, keep listening this long without "Hi Jarvis" (0 = off)
 
 [ai]
+cloudflare_account_id = "ad4ea1665cd1721c770d2d9f321d459e"  # not a secret (names the account); the token is in .env
 # v3 (26 Sep): Groq + Gemini only. See docs/ai-provider-report.md.
 # Gemini Flash-Lite: anything that needs the screen, questions about live facts, and the fallback.
 # 3.5 Flash-Lite: 16/16 commands, 10/12 screen clicks; 3.1 Flash-Lite: never hung in tests.

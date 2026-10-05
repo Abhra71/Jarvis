@@ -1,11 +1,11 @@
 # Getting the free AI keys (no credit card)
 
-You already have **Groq**, **Gemini** and **NVIDIA** (done 5 Oct). Add Cloudflare. Each takes about 2 minutes. Use your normal email; none of
+**All set on 5 Oct:** Groq, Gemini, NVIDIA and Cloudflare all answer (Mistral skipped: it asks for payment). Each takes about 2 minutes. Use your normal email; none of
 them asks for a card.
 
 **Where keys go:**
 1. Open `C:\Syntax_Assembler\Jarvis\.env` in Notepad.
-2. Add one line per key, exactly as shown below. Don't put spaces around the `=`.
+2. Add one line per key, as shown below (spaces around the `=` are fine).
 3. Save the file.
 
 Never paste a key into a chat, a screenshot or GitHub. The `.env` file is never uploaded.
@@ -36,8 +36,10 @@ On 5 Oct Mistral asked for payment, so it isn't used. Groq, Gemini and NVIDIA co
 5. On the same page, copy your **Account ID**.
 6. In `.env` add both:
    ```
-   CLOUDFLARE_API_TOKEN=xxxxxxxxxxxxxxxx
-   CLOUDFLARE_ACCOUNT_ID=xxxxxxxxxxxxxxxx
+   CLOUDFLARE_API_TOKEN=xxxxxxxxxxxxxxxx      (CLOUDFLARE_API_KEY works too)
+   ```
+   The Account ID is not a secret: it goes in `config.toml` under `[ai]` as `cloudflare_account_id`.
+   ```
    ```
 
 ---
