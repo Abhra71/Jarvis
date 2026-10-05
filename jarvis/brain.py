@@ -105,8 +105,9 @@ def load_api_key(name: str = "GEMINI_API_KEY") -> str | None:
     env_file = ROOT / ".env"
     if not key and env_file.exists():
         for line in env_file.read_text(encoding="utf-8-sig").splitlines():  # -sig: Notepad may add a BOM
-            if line.strip().startswith(f"{name}="):
-                key = line.split("=", 1)[1].strip().strip('"').strip("'")
+            left, eq, right = line.partition("=")
+            if eq and left.strip() == name:  # "NAME = key" (spaces typed in Notepad, 5 Oct) works too
+                key = right.strip().strip('"').strip("'")
     return key or None
 
 
