@@ -109,6 +109,27 @@ correctly**. It is not a toy: it is a tool for work, for anyone on **Windows 10 
    - No personal paths or names in the code: everything comes from the profile.
    - Apps, browsers, editors and compilers are found on any Windows 10/11 PC.
 
+## The AI pipeline (the user, 5 Oct): every job goes to the model that is best at it, proven on real data
+No single model is used until it fails. Each kind of job is assigned to the model that **measurably** does it best:
+- understanding a sentence → an action plan;
+- deciding "ask, or act?";
+- spotting noise;
+- Java/C++ edits;
+- fixing a failed step;
+- reading the screen (vision);
+- summarising, chat.
+
+1. **Benchmark first.** Every candidate model is run on the same real test cases for each job: the user's sentences
+   with their screens, and the coding sentences compiled and checked. The score is accuracy, speed (median and
+   slowest 10%), tokens and failures (timeouts, bad JSON).
+2. **Assign by the numbers.** Each job gets a ranked chain (best → next best → …), written down with the scores that
+   justify it (`docs/model-benchmark.md`).
+3. **Spread the load.** The pipeline tracks each model's minute and day allowance live, and sends work to the next
+   model in the chain **before** a limit is hit, not after a failure. Repeated instructions are kept identical so
+   Groq's cache doesn't count them.
+4. **Re-run the benchmark** when a provider changes its models or limits, and after each trial (new real sentences).
+   The chain changes only when the numbers say so.
+
 ## How progress is measured
 - **The gold set.** Every real sentence the user has said: 480 before the trial and all from the trial. Each one has
   what should happen written down. Coding ones must produce code that compiles and matches.
