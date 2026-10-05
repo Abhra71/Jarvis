@@ -35,7 +35,15 @@ from jarvis.llm import understand as U  # noqa: E402
 
 GOLD = ROOT / "data" / "gold" / "understand.jsonl"
 IDS = ROOT / "data" / "gold" / "bench_ids.json"
-OUT = ROOT / "data" / "bench" / ("understand-" + __import__("hashlib").sha1(U.SYSTEM.encode()).hexdigest()[:8])
+PROMPTS = {"full": U.SYSTEM, "short": U.SYSTEM_SHORT}
+PROMPT = "full"  # set by --prompt
+
+
+def _out(prompt: str) -> Path:
+    return ROOT / "data" / "bench" / ("understand-" + __import__("hashlib").sha1(PROMPTS[prompt].encode()).hexdigest()[:8])
+
+
+OUT = _out("full")
 
 PROFILE = ("Chrome profiles: main = ABHRA, AI = Abhra (second), backup = Abhra Chakraborty, Large Language, "
            "Miscellaneous, Work. Browsers: Chrome, Brave. Studies on PW (Physics Wallah, pw.live; batch VICTORY 2027; "
@@ -142,7 +150,8 @@ def run_model(model: str, ids: list[int], golds: dict, lock: threading.Lock, tim
         for attempt in range(4):
             t0 = time.monotonic()
             m, rep = U.understand(model, g["said"], g["ctx"], g["prev"], g["unsure"], PROFILE,
-                                  coding="coding mode on" in g["ctx"].lower() or g["kind"] == "code", timeout=timeout)
+                                  coding="coding mode on" in g["ctx"].lower() or g["kind"] == "code", timeout=timeout,
+                                  system=PROMPTS[PROMPT])
             if rep.error == "rate_limit" and attempt < 3:
                 time.sleep(max(rep.retry_after, 15 * (attempt + 1)))
                 continue
@@ -217,7 +226,10 @@ def main():
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--limit", type=int, default=0, help="only the first N sample sentences (a quick look)")
     ap.add_argument("--model", default="", help="failures: which model")
+    ap.add_argument("--prompt", default="full", choices=sorted(PROMPTS), help="which instructions to test")
     args = ap.parse_args()
+    global OUT, PROMPT
+    PROMPT, OUT = args.prompt, _out(args.prompt)
     golds = gold()
     if args.job == "report":
         print(report())

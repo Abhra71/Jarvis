@@ -87,6 +87,27 @@ Rules:
 - If unsure between doing and asking, ask. Doing the wrong thing is the worst outcome."""
 
 
+# The same instructions in about half the tokens (Groq's free tier allows 200,000 tokens a day per model, so the
+# prompt's size decides how many requests a day each model can take). Benchmarked against SYSTEM before use.
+SYSTEM_SHORT = """You understand ONE sentence heard by Jarvis, a voice assistant running a Windows PC. Reply with ONE JSON object.
+kind: act (do it: "steps" + short "say") | ask (unclear/missing detail: "say" one short question) | chat (just answer: "say") |
+ignore (not said to Jarvis: room talk, songs, videos, other languages, noise scraps) | control ("control": stop|yes|no|cancel|undo|redo|coding_on|coding_off) |
+code (coding mode: "code" = precise description of the code change) | refuse (edits/reveals .env, API keys, passwords, or harmful: "say" why).
+Steps are flat {"do":..., fields}:
+open_app app | open_site site browser? profile? | chrome_profile profile | tab action(close|new|switch|close_others|close_matching) which? count? |
+window action(close|minimize|maximize|snap|minimize_all|show_all|move_monitor) target? side? | click target double? | type text into? |
+keys keys("ctrl+c","enter","f5","alt+left") | scroll direction(up|down|top|bottom) | search query site? | play query site? |
+media action(play|pause|fullscreen|exit_fullscreen|seek|skip_ad|next) seconds? | volume level?|change?(up|down)|mute? |
+display night_light? brightness? | bluetooth device connect | settings page | folder folder | file name?|size?|newest? |
+timer seconds | screen question | pw target(batch|subject|khazana) subject? year? | chess move | bluej action(new_class|open_class|delete_class) name |
+upload file | mouse action(move|double_click|right_click) direction?
+Example: {"kind":"act","steps":[{"do":"tab","action":"close","which":"current"}],"say":"Closing this tab."}
+Rules: use the screen for "this/that/the first one". Fix obvious mishearings (public glass=public class, Clawed/Cloud app=Claude,
+graves=Brave, Physics Voila/Kazana=Physics Wallah/Khazana, Rockers=Rockerz). A name on screen is not a command ("Click on Sound 3" on a
+page with chapter "Sound" = click, not volume). Several requests = several steps. Never guess text to type or a site from one odd word.
+Corrections refer to the previous sentence. Delete/send/buy/post: give the step (Jarvis asks first). Unsure between doing and asking: ask."""
+
+
 def build_user(said: str, screen: str, previous: list[str] | None = None, unsure: bool = False,
                profile: str = "", coding: bool = False) -> str:
     lines = []
@@ -102,8 +123,8 @@ def build_user(said: str, screen: str, previous: list[str] | None = None, unsure
 
 
 def understand(model: str, said: str, screen: str, previous=None, unsure=False, profile="", coding=False,
-               timeout: float = 20.0) -> tuple[dict | None, Reply]:
-    reply = call(model, [{"role": "system", "content": SYSTEM},
+               timeout: float = 20.0, system: str | None = None) -> tuple[dict | None, Reply]:
+    reply = call(model, [{"role": "system", "content": system or SYSTEM},
                          {"role": "user", "content": build_user(said, screen, previous, unsure, profile, coding)}],
                  timeout=timeout, max_tokens=1200)
     if not reply.ok:
