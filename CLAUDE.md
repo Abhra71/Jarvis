@@ -8,6 +8,8 @@ sit back and say what they need. Ask: *would this person trust it, wait for it, 
   it. A short, sensible question is fine; a confident mistake is not.
 - Slow is frustrating, silent failure is worse, fake success ("done" when it isn't) is worst of all.
 - Every spoken line should be short, sensible and encouraging. Never robotic or blaming.
+- Autocorrect towards what makes sense right now (screen, code, past corrections). When a guess is cheap to
+  undo, use the sensible default and say it ("Added int i = 0"); ask only when a wrong guess would cost them.
 
 ## The goal
 Run the whole Windows 10/11 PC by voice: **reliable, fast, accurate**, for anyone, on any PC (not just this one).

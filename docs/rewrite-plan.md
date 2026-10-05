@@ -151,6 +151,22 @@ No single model is used until it fails. Each kind of job is assigned to the mode
 - **Live pass/fail checks for Phase 1:** in the scratch BlueJ project, "delete the classes Oval and Cone" (with a
   yes) and "open the class Test" must work.
 
+## Added 6 Oct: autocorrect, sensible defaults, speed, more providers (the user)
+- **Autocorrect to the closest meaningful phrase**, for coding and normal tasks. Hearing gets hints from the
+  screen and the code (window names, buttons, class and variable names), and the brain fixes a mishearing towards
+  something that exists right now ("public glass" → `public class`, "Oval glass" → the class Oval). Corrections the
+  user makes are remembered as lessons.
+- **Sensible defaults instead of questions when a guess is cheap to undo.** "Initialize variable i" → `int i = 0;`
+  and say it. Ask only when a wrong guess would cost the user: deleting, sending, a clash, or a real ambiguity like
+  "last index of what?". (The benchmark showed models asking "what type?" for this: wrong for a stressed user.)
+- **Speed stays first.** Learned tasks skip the AI (the local matcher, ~0.1 s); new ones use the fastest
+  proven model (Groq ~0.5–1 s). Jarvis says "On it" at once for anything slower, and a slow specialist (Nemotron
+  coding at 6 s) is only a backup unless nothing fast is as accurate. Optionally, the two fastest models are asked
+  at once and the first good answer wins.
+- **More providers only if they earn a place on the benchmark** (fast, available, no card): Z.ai GLM Flash,
+  OpenRouter free models, Ollama Cloud, LLM7. This PC's RTX 2050 (4 GB) can run the small local matcher, not a
+  local brain.
+
 ## How progress is measured
 - **The gold set.** Every real sentence the user has said: 480 before the trial and all from the trial. Each one has
   what should happen written down. Coding ones must produce code that compiles and matches.
