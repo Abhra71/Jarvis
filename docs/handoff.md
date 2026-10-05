@@ -3,6 +3,18 @@
 > **5 Oct: REWRITE decided.** The trial showed ~35% of real requests worked; the pattern-based foundation is wrong.
 > Read `docs/rewrite-plan.md` first (goal, targets, new foundation, phases). Keys: `docs/api-keys-guide.md`.
 > Everything below is history of the old foundation.
+>
+> **Phase 0 status (5 Oct, in progress):**
+> - Gold set: `data/gold/understand.jsonl` (537 real sentences, hand-labelled with the screen; local only) and
+>   `data/gold/coding.jsonl` (`tools/gold_coding.py`: 25 of the user's coding sentences + 93 student-style).
+> - AI pipeline: `jarvis/llm/` (`providers.py` one caller for Groq/Gemini/NVIDIA/Cloudflare; `understand.py` the
+>   brain's format; `coder.py` the coding expert with one compile-repair; `router.py` chains + live budgets).
+> - Benchmarks: `tools/bench.py understand --all`, `tools/bench_coding.py --repair --all`; results in `data/bench/`
+>   (re-graded on report); `tools/assign.py --write` makes `data/pipeline.json` + `docs/model-benchmark.md`.
+> - Keys: Groq, Gemini, NVIDIA, Cloudflare work (account id in config.toml). Mistral skipped (payment).
+> - Findings so far: Groq qwen3.8-27b and Gemini 3.5 Flash-Lite lead understanding; Gemini 3.5/3.8 Flash and Gemma
+>   were mostly unavailable (overloaded free tier); Llama 3.3 70B acts wrongly ~22%. Groq's free 200K tokens/day
+>   per model is the binding limit (~1,400 tokens per understanding call): the prompt must get smaller.
 
 New chat? Say "continue Jarvis". Read only this page; open other docs when a task needs them.
 

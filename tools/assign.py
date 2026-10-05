@@ -103,6 +103,29 @@ def main():
         from jarvis.llm.router import PIPELINE
         PIPELINE.write_text(json.dumps({"chains": chains, "why": notes}, indent=1), encoding="utf-8")
         print(f"\nsaved {PIPELINE}")
+        doc = ROOT / "docs" / "model-benchmark.md"
+        parts = ["# Which model does which job, and why",
+                 "",
+                 "Made by `tools/assign.py --write` from the benchmark results. Do not edit by hand: re-run the "
+                 "benchmarks (`tools/bench.py understand --all`, `tools/bench_coding.py --repair --all`) and this tool.",
+                 "",
+                 f"Updated: {__import__('time').strftime('%d %b %Y %H:%M')}",
+                 "",
+                 "## The chains (the router tries them in this order)"]
+        for job in chains:
+            parts += ["", f"**{job}:** " + " → ".join(f"`{m}`" for m in chains[job])]
+            parts += [f"- {w}" for w in notes[job]]
+        parts += ["", "## Understanding: the user's real sentences",
+                  "", "Each model got the same 167 sentences (a fixed sample of the 537 the user really said, labelled "
+                  "by hand with the screen they were said on). *Wrong action* = it acted, but wrongly or where it "
+                  "should have asked/ignored: the worst outcome. *Available* = calls that got an answer (the free "
+                  "tiers are sometimes overloaded).", "", bench.report()]
+        parts += ["", "## Coding: Java (BlueJ) and C++ (VS Code)",
+                  "", "118 cases: the user's 25 real coding sentences on the file they had, plus 93 student-style "
+                  "ones. Every edit compiled by the real javac / g++. With one repair try (as Jarvis runs it).",
+                  "", bench_coding.report(repair=True)]
+        doc.write_text("\n".join(parts) + "\n", encoding="utf-8", newline="\n")
+        print(f"saved {doc}")
 
 
 if __name__ == "__main__":
