@@ -70,6 +70,9 @@ SYNONYMS = {
 }
 
 
+_RETRY = ("rate_limit", "server", "timeout", "empty", "network")
+
+
 def gold() -> dict[int, dict]:
     return {g["id"]: g for g in (json.loads(l) for l in GOLD.read_text(encoding="utf-8").splitlines())}
 
@@ -129,7 +132,7 @@ def run_model(model: str, ids: list[int], golds: dict, lock: threading.Lock, tim
     if path.exists():
         for line in path.read_text(encoding="utf-8").splitlines():
             r = json.loads(line)
-            if r.get("error") not in ("rate_limit",):  # rate-limited ones are tried again
+            if r.get("error") not in _RETRY:  # outages are tried again on the next run (and counted as availability)
                 done.add(r["id"])
     gap = GAP[model.split(":")[0]]
     timeouts = 0
@@ -165,10 +168,13 @@ def report(write: bool = True) -> str:
     golds = gold()
     rows = []
     for path in sorted(OUT.glob("understand__*.jsonl")):
-        res = {}
+        res, calls, outages = {}, 0, 0
         for line in path.read_text(encoding="utf-8").splitlines():
             r = json.loads(line)
-            res[r["id"]] = r  # the last try counts
+            calls += 1
+            outages += r.get("error") in _RETRY
+            if r["id"] not in res or res[r["id"]].get("error") in _RETRY:
+                res[r["id"]] = r  # a real answer counts; an outage only until it's retried
         rs = list(res.values())
         if not rs:
             continue
@@ -186,14 +192,14 @@ def report(write: bool = True) -> str:
             "median": statistics.median(secs) if secs else 0, "p90": secs[int(len(secs) * 0.9) - 1] if secs else 0,
             "tin": statistics.mean(r["tokens_in"] for r in rs), "tout": statistics.mean(r["tokens_out"] for r in rs),
             "cached": statistics.mean(r["cached"] for r in rs),
-            "kinds": {k: f"{v[0]}/{v[1]}" for k, v in sorted(by_kind.items())},
+            "kinds": {k: f"{v[0]}/{v[1]}" for k, v in sorted(by_kind.items())}, "avail": 1 - outages / calls,
         })
     rows.sort(key=lambda r: (-r["pass"], r["wrong_action"], r["median"]))
-    out = ["| Model | Sentences | Right | Wrong action | Wrong kind | Missing detail | No answer | Median s | Slow 10% s | Tokens in/out (cached) | act | ignore | chat | ask | code | refuse | control |",
-           "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    out = ["| Model | Sentences | Available | Right | Wrong action | Wrong kind | Missing detail | No answer | Median s | Slow 10% s | Tokens in/out (cached) | act | ignore | chat | ask | code | refuse | control |",
+           "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         k = r["kinds"]
-        out.append(f"| {r['model']} | {r['n']} | **{r['pass']:.0%}** | {r['wrong_action']:.0%} | {r['wrong_kind']:.0%} | "
+        out.append(f"| {r['model']} | {r['n']} | {r['avail']:.0%} | **{r['pass']:.0%}** | {r['wrong_action']:.0%} | {r['wrong_kind']:.0%} | "
                    f"{r['missing']:.0%} | {r['error']:.0%} | {r['median']:.1f} | {r['p90']:.1f} | "
                    f"{r['tin']:.0f}/{r['tout']:.0f} ({r['cached']:.0f}) | " +
                    " | ".join(k.get(x, "-") for x in ("act", "ignore", "chat", "ask", "code", "refuse", "control")) + " |")
