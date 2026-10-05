@@ -1,6 +1,6 @@
 # Getting the free AI keys (no credit card)
 
-You already have **Groq** and **Gemini**. Add these three. Each takes about 2 minutes. Use your normal email; none of
+You already have **Groq**, **Gemini** and **NVIDIA** (done 5 Oct). Add Cloudflare. Each takes about 2 minutes. Use your normal email; none of
 them asks for a card.
 
 **Where keys go:**
@@ -23,19 +23,8 @@ Never paste a key into a chat, a screenshot or GitHub. The `.env` file is never 
    NVIDIA_API_KEY=nvapi-xxxxxxxxxxxxxxxx
    ```
 
-## 2. Mistral (console.mistral.ai): the coding backup (Codestral)
-1. Go to **https://console.mistral.ai** and sign up with your email.
-2. It asks you to pick a plan. Choose the **free plan** (named "Experiment" or "Free"). It may ask you to verify a
-   phone number by SMS: that's normal and free.
-3. In the left menu open **API Keys**, then **Create new key**. Give it a name like `jarvis` and leave the expiry
-   empty or set it far away.
-4. Copy the key straight away (it's shown only once).
-5. In `.env` add:
-   ```
-   MISTRAL_API_KEY=xxxxxxxxxxxxxxxx
-   ```
-   Note: on the free plan Mistral may use what's sent to improve its models. Jarvis only sends text (what you said
-   and the code or screen as text), never files or keys.
+## 2. Mistral: skipped
+On 5 Oct Mistral asked for payment, so it isn't used. Groq, Gemini and NVIDIA cover coding.
 
 ## 3. Cloudflare Workers AI: the last fallback (never trains on your data)
 1. Go to **https://dash.cloudflare.com/sign-up**, sign up with your email and confirm it. Skip any "add a website"

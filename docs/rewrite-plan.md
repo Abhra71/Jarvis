@@ -101,8 +101,7 @@ correctly**. It is not a toy: it is a tool for work, for anyone on **Windows 10 
 8. **AI providers: a chain with fallbacks** (all free, no card; see `docs/api-keys-guide.md`).
    - **Groq** is the main brain: 3 models, each with its own 1,000 a day.
    - **Gemini:** the screen (vision) and a backup.
-   - **NVIDIA:** a large backup.
-   - **Mistral:** Codestral, a backup for coding.
+   - **NVIDIA:** a large backup (Nemotron 3 Super 0.8 s; Nemotron Nano Omni 1.4 s can read images).
    - **Cloudflare:** the last resort.
    - The same instructions are sent every time, so Groq's cache doesn't count them against its 8,000-a-minute limit.
    - The status page shows each provider's allowance left.
