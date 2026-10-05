@@ -56,11 +56,36 @@ def build_user(said: str, text: str, cursor: int, previous=(), file_name: str = 
 
 
 def edit(model: str, lang: str, said: str, text: str, cursor: int, previous=(), file_name: str = "",
-         timeout: float = 30.0) -> tuple[dict | None, Reply]:
+         timeout: float = 30.0, repair: bool = False) -> tuple[dict | None, Reply]:
+    """One edit. With repair=True an edit that adds compile errors gets ONE more try with the compiler's own
+    messages; if it still doesn't compile, the answer becomes a question/apology (nothing broken is written)."""
     name = {"java": "Java", "cpp": "C++"}.get(lang, lang)
-    reply = call(model, [{"role": "system", "content": SYSTEM.format(lang=name)},
-                         {"role": "user", "content": build_user(said, text, cursor, previous, file_name)}],
-                 timeout=timeout, max_tokens=2500)
+    messages = [{"role": "system", "content": SYSTEM.format(lang=name)},
+                {"role": "user", "content": build_user(said, text, cursor, previous, file_name)}]
+    out, reply = _ask(model, messages, timeout)
+    if not repair or out is None or out.get("kind") != "edit":
+        return out, reply
+    from .. import codecheck
+    new = codecheck.new_errors(text, str(out.get("code") or ""), lang)
+    if not new:
+        return out, reply
+    errs = "; ".join(f"line {e.line}: {e.message}" for e in new[:4])
+    messages += [{"role": "assistant", "content": reply.text},
+                 {"role": "user", "content": f"That does not compile: {errs}. Answer again (the complete file), "
+                                             f"or ask if the request itself causes the error."}]
+    out2, reply2 = _ask(model, messages, timeout)
+    reply2.seconds += reply.seconds
+    reply2.tokens_in += reply.tokens_in
+    reply2.tokens_out += reply.tokens_out
+    reply2.extra["repaired"] = True
+    if out2 is not None and out2.get("kind") == "edit" and codecheck.new_errors(text, str(out2.get("code") or ""), lang):
+        return {"kind": "ask", "say": f"I couldn't write that without breaking the code ({new[0].plain()}). "
+                                      f"Can you say it another way?"}, reply2
+    return out2, reply2
+
+
+def _ask(model: str, messages: list, timeout: float) -> tuple[dict | None, Reply]:
+    reply = call(model, messages, timeout=timeout, max_tokens=2500)
     if not reply.ok:
         return None, reply
     out = parse_json(reply.text)

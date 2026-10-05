@@ -75,9 +75,10 @@ def grade(c: dict, out: dict | None) -> tuple[str, str]:
     return "pass", ""
 
 
-def run_model(model: str, cs: dict, lock: threading.Lock):
-    OUT.mkdir(parents=True, exist_ok=True)
-    path = OUT / (model.replace(":", "__").replace("/", "_").replace("@", "") + ".jsonl")
+def run_model(model: str, cs: dict, lock: threading.Lock, repair: bool = False):
+    out_dir = _dir(repair)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / (model.replace(":", "__").replace("/", "_").replace("@", "") + ".jsonl")
     done = set()
     if path.exists():
         done = {json.loads(l)["id"] for l in path.read_text(encoding="utf-8").splitlines()
@@ -87,7 +88,8 @@ def run_model(model: str, cs: dict, lock: threading.Lock):
     for n, c in enumerate(c for c in cs.values() if c["id"] not in done):
         for attempt in range(4):
             t0 = time.monotonic()
-            out, rep = coder.edit(model, c["lang"], c["said"], c["file"], c["cursor"], c["previous"], file_name(c))
+            out, rep = coder.edit(model, c["lang"], c["said"], c["file"], c["cursor"], c["previous"], file_name(c),
+                                  repair=repair)
             if rep.error == "rate_limit" and attempt < 3:
                 time.sleep(max(rep.retry_after, 20 * (attempt + 1)))
                 continue
@@ -111,10 +113,15 @@ def run_model(model: str, cs: dict, lock: threading.Lock):
         print(f"[{model}] finished", flush=True)
 
 
-def report() -> str:
+def _dir(repair: bool) -> Path:
+    """First-try results and with-one-repair results are kept apart."""
+    return OUT.with_name(OUT.name + "-repair") if repair else OUT
+
+
+def report(repair: bool = False) -> str:
     cs = cases()
     rows = []
-    for path in sorted(OUT.glob("*.jsonl")):
+    for path in sorted(_dir(repair).glob("*.jsonl")):
         res = {}
         for line in path.read_text(encoding="utf-8").splitlines():
             r = json.loads(line)
@@ -144,13 +151,14 @@ def main():
     ap.add_argument("--models", default="")
     ap.add_argument("--model", default="")
     ap.add_argument("--all", action="store_true")
+    ap.add_argument("--repair", action="store_true", help="an edit that does not compile gets one more try")
     args = ap.parse_args()
     if args.job == "report":
-        print(report())
+        print(report(args.repair))
         return
     cs = cases()
     if args.job == "failures":
-        path = OUT / (args.model.replace(":", "__").replace("/", "_").replace("@", "") + ".jsonl")
+        path = _dir(args.repair) / (args.model.replace(":", "__").replace("/", "_").replace("@", "") + ".jsonl")
         for line in path.read_text(encoding="utf-8").splitlines():
             r = json.loads(line)
             if r["grade"] != "pass":
@@ -160,12 +168,12 @@ def main():
     models = CANDIDATES if args.all else [m for m in args.models.split(",") if m]
     print(f"{len(cs)} cases x {len(models)} models", flush=True)
     lock = threading.Lock()
-    threads = [threading.Thread(target=run_model, args=(m, cs, lock), daemon=True) for m in models]
+    threads = [threading.Thread(target=run_model, args=(m, cs, lock, args.repair), daemon=True) for m in models]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
-    print(report())
+    print(report(args.repair))
 
 
 if __name__ == "__main__":

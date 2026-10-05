@@ -37,7 +37,7 @@ def rows_understand() -> list[dict]:
 def rows_code() -> list[dict]:
     cs = bench_coding.cases()
     out = []
-    for path in sorted(bench_coding.OUT.glob("*.jsonl")):
+    for path in sorted(bench_coding._dir(True).glob("*.jsonl")):  # as Jarvis runs it: with the one repair
         out.append(_summarise(path, lambda r: "error" if r.get("error") else bench_coding.grade(cs[r["id"]], r["out"])[0]))
     return out
 
