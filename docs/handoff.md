@@ -15,6 +15,9 @@
 > - Findings so far: Groq qwen3.8-27b and Gemini 3.5 Flash-Lite lead understanding; Gemini 3.5/3.8 Flash and Gemma
 >   were mostly unavailable (overloaded free tier); Llama 3.3 70B acts wrongly ~22%. Groq's free 200K tokens/day
 >   per model is the binding limit (~1,400 tokens per understanding call): the prompt must get smaller.
+> - Prompt-size test (Gemini 3.5 Flash-Lite, same 167 sentences): full prompt 85% right; half-size prompt 77%
+>   (noise recognised 19/22 -> 11/22, coding 24/28 -> 19/28). Keep the full one; try a middle version that keeps the
+>   noise and coding guidance, and use it only if it scores the same.
 
 New chat? Say "continue Jarvis". Read only this page; open other docs when a task needs them.
 
