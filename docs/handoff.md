@@ -1,5 +1,9 @@
 # Jarvis: start here
 
+> **5 Oct: REWRITE decided.** The trial showed ~35% of real requests worked; the pattern-based foundation is wrong.
+> Read `docs/rewrite-plan.md` first (goal, targets, new foundation, phases). Keys: `docs/api-keys-guide.md`.
+> Everything below is history of the old foundation.
+
 New chat? Say "continue Jarvis". Read only this page; open other docs when a task needs them.
 
 ## The goal
