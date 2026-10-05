@@ -107,7 +107,8 @@ def grade(g: dict, m: dict | None) -> str:
     text = U.as_text(m)
     if kind == "control":
         if g["kind"] == "control":
-            return "pass" if (not g["intent"] or m.get("control") == g["intent"]) else "wrong_kind"
+            same = {"no": ("no", "cancel"), "stop": ("stop", "cancel")}.get(g["intent"], (g["intent"],))
+            return "pass" if (not g["intent"] or m.get("control") in same) else "wrong_kind"
         return "pass" if "control" in ok else ("wrong_action" if m.get("control") in ("stop", "yes", "undo") else "wrong_kind")
     if kind not in kinds_ok:
         if kind == "act" and any(d in ok for d in dos) and g["kind"] in ("act", "code", "ask", "chat"):
@@ -178,6 +179,8 @@ def report(write: bool = True) -> str:
         rs = list(res.values())
         if not rs:
             continue
+        for r in rs:  # graded again against today's labels (a label fix needs no new run)
+            r["grade"] = "error" if r.get("error") else grade(golds[r["id"]], r["meaning"])
         c = Counter(r["grade"] for r in rs)
         secs = sorted(r["seconds"] for r in rs if not r["error"])
         by_kind = defaultdict(lambda: [0, 0])

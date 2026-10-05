@@ -124,7 +124,19 @@ def call(model: str, messages: list[dict], *, json_mode: bool = True, max_tokens
         return Reply(model, seconds=secs, error="empty", detail=str(data)[:200])
     return Reply(model, text=text, seconds=secs, tokens_in=usage.get("prompt_tokens", 0) or 0,
                  tokens_out=usage.get("completion_tokens", 0) or 0, cached=cached,
-                 extra={"no_effort": "reasoning_effort" not in body, "no_json_mode": "response_format" not in body})
+                 extra={"no_effort": "reasoning_effort" not in body, "no_json_mode": "response_format" not in body,
+                        "limits": _limits(r.headers)})
+
+
+def _limits(headers) -> dict:
+    """What the provider says is left (Groq: requests left today, tokens left this minute). Empty for the others."""
+    out = {}
+    for name, key in (("x-ratelimit-remaining-requests", "requests_left"), ("x-ratelimit-remaining-tokens", "tokens_left"),
+                      ("x-ratelimit-limit-requests", "requests_limit"), ("x-ratelimit-limit-tokens", "tokens_limit")):
+        v = headers.get(name)
+        if v and v.isdigit():
+            out[key] = int(v)
+    return out
 
 
 def parse_json(text: str) -> dict | None:
