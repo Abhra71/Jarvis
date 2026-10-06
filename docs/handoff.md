@@ -18,6 +18,20 @@
 > - Prompt-size test (Gemini 3.5 Flash-Lite, same 167 sentences): full prompt 85% right; half-size prompt 77%
 >   (noise recognised 19/22 -> 11/22, coding 24/28 -> 19/28). Keep the full one; try a middle version that keeps the
 >   noise and coding guidance, and use it only if it scores the same.
+>
+> **6 Oct session (user away 1.5 h, PC given):**
+> - Chains chosen by `tools/assign.py` (`data/pipeline.json`, `docs/model-benchmark.md`): understand = Groq qwen3.8
+>   (90%, 0.6 s) -> Gemini 3.5 Flash-Lite (85%, 1.0 s) -> NVIDIA Nemotron -> Cloudflare gpt-oss; code = Gemini 3.5
+>   Flash-Lite (94%, 1.6 s) -> Nemotron (93%, 5.9 s) -> Groq gpt-oss-120b (92%, 0.8 s) -> gpt-oss-20b. 0% of edits
+>   failed to compile (one repair try). Cloudflare's 10,000 neurons/day run out fast: understanding only, a little.
+> - Hands: right-click + pop-up menus in any app (`elements.open_menu/choose`, tools `right_click`,
+>   `choose_menu_item`); 'kind' picks between same-named items. Live in Explorer: menu read in 0.95 s.
+> - Executor `jarvis/llm/act.py`: 323/337 real steps map to valid tool calls (gaps: chess, bare mouse moves).
+> - New brain `jarvis/llm/brain2.py` (understand -> act -> reply; noise silent; yes before delete), live-tested
+>   (open Downloads, noise ignored, close window). NOT switched on in the assistant yet.
+> - BlueJ can't be started from Claude's session (Windows Application Control blocks it; not bypassed): the
+>   BlueJ delete/open live checks need BlueJ opened by the user. BlueJ's delete item is assumed "Remove": verify.
+> - Next: Qwen 3.8 coding run; wire NewBrain into `assistant._handle` behind a switch; Phase 1 live checks.
 
 New chat? Say "continue Jarvis". Read only this page; open other docs when a task needs them.
 
