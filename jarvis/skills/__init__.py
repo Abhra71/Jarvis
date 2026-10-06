@@ -78,7 +78,7 @@ def needs_confirmation(name: str, args: dict, front_window) -> str | None:
     """If this action is the kind that can't be taken back, describe it; else None."""
     if name == "do" and args.get("ability") in SENDING_ABILITIES:
         return SENDING_ABILITIES[args["ability"]]
-    if name in ("click", "click_pair", "click_element"):
+    if name in ("click", "click_pair", "click_element", "choose_menu_item"):
         target = str(args.get("target", ""))
         if _RISKY_CLICK.search(target):
             return f"click '{target}'"
@@ -100,7 +100,7 @@ def needs_confirmation(name: str, args: dict, front_window) -> str | None:
 
 # Tools that act on the screen like the user's own hands. A request may use only as many as it asked for:
 # on 26 Sep Jarvis played an extra chess move and kept clicking after "No thanks". Enforced here in code.
-_HANDS = {"click", "click_pair", "click_element", "type_text", "press_key"}
+_HANDS = {"click", "click_pair", "click_element", "type_text", "press_key", "right_click", "choose_menu_item"}
 _PARTS = re.compile(r"\s*(?:,|;|\bafter that\b|\band then\b|\bthen\b|\band\b)\s*", re.I)
 _ONE_ACTION = re.compile(r"^(click|tap|press|hit|select|choose|move|castle|pause|skip|close the pop ?up)\b|"
                          r"\b(pawn|knight|bishop|rook|queen|king|castle|takes)\b|\b[a-h][1-8]\b")
@@ -228,6 +228,13 @@ class Skills:
             Tool("click_element", "Click an on-screen item by its id from page_elements, or by its name.",
                  {"id": (I, "", False, None), "name": (S, "", False, None), "double": (B, "", False, None)},
                  lambda id=None, name=None, double=False, target="": self._click_element(bool(double))),
+            Tool("right_click", "Right-click an on-screen item (by id or name; kind = file, folder, class, tab, button…"
+                                ") and list the menu that opens. Then choose_menu_item.",
+                 {"id": (I, "", False, None), "name": (S, "", False, None), "kind": (S, "", False, None)},
+                 lambda id=None, name=None, kind="", target="": self._right_click()),
+            Tool("choose_menu_item", "Choose an item in the menu right_click just opened (Delete, Rename, Open…).",
+                 {"name": (S, "", True, None)},
+                 lambda name, target="": self._choose(name)),
             Tool("look_at_screen", "Screenshot of the whole screen. Positions are x,y from 0 to 1000.", {},
                  lambda: {"text": "Screenshot attached. Give positions as x,y from 0 to 1000 of this image.",
                           "image_jpeg": self._screenshot()}),
@@ -380,6 +387,17 @@ class Skills:
             return self.browser.open(None, "main")
         return self.apps.open(name)
 
+    def _right_click(self) -> str:
+        menu = elements.open_menu(self._element)
+        if not menu:
+            return f"Not done: right-clicked {self._element.name}, but no menu opened."
+        return f"Right-clicked {self._element.name}. The menu has: " + "; ".join(e.name for e in menu[:25])
+
+    def _choose(self, name: str) -> str:
+        ok, msg = elements.choose(name)
+        time.sleep(0.3)
+        return msg if ok else f"Not done: {msg}"
+
     def _click_element(self, double: bool) -> str:
         result = elements.click(self._element, double)
         time.sleep(0.3)  # let a new page or pop-up start to show
@@ -432,6 +450,17 @@ class Skills:
         if problem:
             log.info("Bad args for %s: %s", name, problem)
             return problem
+        if name == "right_click":
+            if args.get("id") is None and not args.get("name"):
+                return "Not done: give the item's id (from page_elements) or its name."
+            if args.get("id") is not None:
+                self._element, why = elements.resolve(args.get("id"), None)
+            else:
+                self._element, why = elements.match(elements.read_front(), str(args["name"]), str(args.get("kind") or ""))
+            if not self._element:
+                return f"Not clicked: {why}"
+        if name == "choose_menu_item":
+            args = {**args, "target": str(args.get("name", ""))}
         if name == "click_element":
             # Find the item first: the confirmation check needs its real name ("[12]" might be "Send").
             if args.get("id") is None and not args.get("name"):

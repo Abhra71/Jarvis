@@ -124,11 +124,21 @@ def page_elements() -> str:
     return describe(_last)
 
 
-def match(items: list[Element], name: str) -> tuple[Element | None, str]:
-    """The item a spoken/typed name means, or (None, why not)."""
+# What a person calls a thing -> the kinds of on-screen item it can be.
+_KIND_WORDS = {"file": ("list item", "item"), "folder": ("list item", "item"), "class": ("button", "item", "list item"),
+               "tab": ("tab",), "button": ("button",), "link": ("link",), "field": ("field",), "menu": ("menu item",),
+               "item": ("list item", "item", "menu item"), "checkbox": ("checkbox",), "option": ("option",)}
+
+
+def match(items: list[Element], name: str, kind: str = "") -> tuple[Element | None, str]:
+    """The item a spoken/typed name means, or (None, why not). `kind` ("file", "tab", "button"…) picks between
+    items with the same name (5 Oct: Explorer's tab, path button and file were all called "scratch")."""
     want = " ".join(name.lower().split()).strip("\"' ")
     if not want:
         return None, "No name given."
+    kinds = _KIND_WORDS.get(kind.lower().strip(), ())
+    if kinds and any(el.kind in kinds for el in items):
+        items = [el for el in items if el.kind in kinds]
     exact = [el for el in items if el.name.lower() == want]
     if len(exact) == 1:
         return exact[0], ""
@@ -161,11 +171,66 @@ def resolve(id: int | None = None, name: str | None = None) -> tuple[Element | N
     return match(fresh, name or "")
 
 
-def click(el: Element, double: bool = False) -> str:
+def click(el: Element, double: bool = False, button: str = "left") -> str:
     x, y = el.centre
     sw, sh = jmouse.screen_size()
-    jmouse.click(x / (sw - 1) * 1000, y / (sh - 1) * 1000, "left", double)
-    return f"Clicked the {el.name[:MAX_NAME]} {el.kind}."
+    jmouse.click(x / (sw - 1) * 1000, y / (sh - 1) * 1000, button, double)
+    verb = "Double-clicked" if double else ("Right-clicked" if button == "right" else "Clicked")
+    return f"{verb} the {el.name[:MAX_NAME]} {el.kind}."
+
+
+# ---- pop-up menus (right-click menus, drop-down menus) ------------------------------------------------------
+# A pop-up menu is its own small window (Explorer: "PopupHost"; classic apps: "#32768"; Java apps: their own
+# popup window), so the front window's items never include it (5 Oct: "delete the class Oval" in BlueJ could never
+# work: Jarvis had no right-click and couldn't see the menu). Windows that appear right after the click are read.
+_menu_windows: list[int] = []
+_menu: list[Element] = []
+
+
+def _visible_windows() -> set[int]:
+    out = set()
+    win32gui.EnumWindows(lambda h, _: out.add(h) if win32gui.IsWindowVisible(h) else None, None)
+    return out
+
+
+def _menu_items(hwnds: list[int]) -> list[Element]:
+    items = []
+    for h in hwnds:
+        try:
+            items += [el for el in _read(h) if el.kind in ("menu item", "button", "list item", "item")]
+        except Exception:
+            log.debug("Couldn't read a pop-up window", exc_info=True)
+    return items
+
+
+def open_menu(el: Element, wait: float = 1.5) -> list[Element]:
+    """Right-click this item and return the menu that opens ([] if none appeared)."""
+    global _menu_windows, _menu
+    before = _visible_windows()
+    click(el, button="right")
+    end = time.monotonic() + wait
+    while time.monotonic() < end:
+        time.sleep(0.15)
+        items = _menu_items(list(_visible_windows() - before))
+        if items:
+            time.sleep(0.15)  # menus fill in a moment after they appear
+            new = list(_visible_windows() - before)
+            _menu_windows, _menu = new, _menu_items(new)
+            return _menu
+    _menu_windows, _menu = [], []
+    return []
+
+
+def choose(name: str) -> tuple[bool, str]:
+    """Click the item called `name` in the menu open_menu just opened."""
+    items = _menu_items(_menu_windows) or _menu
+    el, why = match(items, name)
+    if not el:
+        from . import keys
+        keys.press("esc")  # never leave a menu hanging open
+        return False, f"The menu has no '{name}'. It has: {', '.join(e.name for e in items[:15])}."
+    click(el)
+    return True, f"Chose {el.name}."
 
 
 def focused_kind() -> str:
