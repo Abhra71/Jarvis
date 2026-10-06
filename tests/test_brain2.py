@@ -69,3 +69,34 @@ class NewBrainTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SwitchTest(unittest.TestCase):
+    """config [ai] brain = "new" sends sentences to the new brain; "old" (the default) keeps the old path."""
+
+    def _assistant(self, brain):
+        from jarvis import assistant, corrections
+        a = assistant.Assistant.__new__(assistant.Assistant)
+        a.dictating, a.coding, a.gaming = False, False, False
+        a.corrections = corrections.Corrections(None)
+        a.last_request, a.fixed_request = "", None
+        a.skills = mock.Mock()
+        a.brain = mock.Mock(answer_agent=mock.Mock(return_value=None), agent=None)
+        a.config = {"ai": {"brain": brain}}
+        a.newbrain = mock.Mock()
+        return a
+
+    def test_new_brain_gets_the_sentence_and_noise_is_silent(self):
+        a = self._assistant("new")
+        a.newbrain.handle.return_value = ("ignored", None)
+        self.assertEqual(a._handle("Ego, WP, Aps,"), ("ignored", ""))
+        a.newbrain.handle.return_value = ("control", "coding_on")
+        self.assertEqual(a._handle("coding mode, please")[0], "coding")
+        self.assertTrue(a.coding)
+
+    def test_old_brain_stays_by_default(self):
+        a = self._assistant("old")
+        with mock.patch("jarvis.assistant.sites.handle", return_value=None), \
+                mock.patch("jarvis.assistant.abilities.handle", return_value="Opened Downloads."):
+            self.assertEqual(a._handle("open downloads"), ("ability", "Opened Downloads."))
+        a.newbrain.handle.assert_not_called()

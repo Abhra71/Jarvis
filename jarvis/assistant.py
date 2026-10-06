@@ -244,6 +244,8 @@ class Assistant:
         reply = answer(text) if callable(answer) else None
         if isinstance(reply, str):
             return "agent", reply
+        if (getattr(self, "config", None) or {}).get("ai", {}).get("brain") == "new":
+            return self._new_brain(text, unsure, ed)
         if _STOP.fullmatch(" ".join(text.lower().strip(" .!?").split())):
             # 30 Sep: "Stop." went to the AI and came back as a question. Stopping needs no thinking.
             agent = getattr(self.brain, "agent", None)
@@ -300,6 +302,34 @@ class Assistant:
         except Exception:
             log.exception("AI turn failed")
             return "failed", "Sorry, something went wrong with that."
+
+    def _new_brain(self, text: str, unsure: bool, ed) -> tuple[str, str]:
+        """The rewrite's brain (jarvis/llm/brain2.py, 6 Oct): every sentence understood, no patterns. On when
+        config [ai] brain = "new"."""
+        if getattr(self, "newbrain", None) is None:
+            from .llm.brain2 import NewBrain
+            self.newbrain = NewBrain(self.skills, profile=self.config.get("ai", {}).get("profile", ""))
+        route, reply = self.newbrain.handle(text, unsure, coding=self.coding)
+        if route == "ignored":
+            return "ignored", ""  # room talk, songs, noise: silence
+        if route == "control":
+            if reply == "coding_on":
+                self.coding = True
+                return "coding", "Coding mode on. Java in BlueJ, C++ in VS Code."
+            if reply == "coding_off":
+                self.coding = False
+                return "coding", "Coding mode off."
+            if reply == "stop":
+                return "offline rules", "Okay, stopped."
+            return "offline rules", "Okay."
+        if route == "code":
+            ed = ed or editors.current()
+            if not ed:
+                return "coding", "Open BlueJ or VS Code with your file first, then tell me the code."
+            # Phase 2 replaces this with the coding expert (jarvis/llm/coder.py); until then, the Block 2 coder.
+            out = self.codemode.handle(text, ed, unsure)
+            return "coding", out or "I couldn't turn that into code yet."
+        return route, reply or ""
 
     def _dictate(self, text: str, spoken: str) -> str:
         """One piece of dictation: typed as said (never Enter: in a chat that would send it). Replies are
