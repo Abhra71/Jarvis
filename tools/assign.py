@@ -5,6 +5,7 @@
 
 Rules (the same for every job):
 1. Score = right answers - 2 x wrong actions (a confident wrong action on the user's PC costs more than a question).
+   Leaders within 3 points of the best: the fastest leads.
 2. Can lead a chain only if: available >= 95% of calls, median answer <= the job's time budget
    (understanding 2 s, coding 3 s). Backups: available >= 90% and median <= twice the budget, if any are.
 3. The chain is the best leader, then the next best models, preferring a DIFFERENT provider for each next place
@@ -73,6 +74,10 @@ def chain(rows: list[dict], budget: float) -> tuple[list[str], list[str]]:
     leaders = [r for r in ranked if r["available"] >= 0.95 and r["median"] <= budget]
     if not leaders:
         return [], why + ["no model meets the leader rules"]
+    # Within 3 points of the best leader, the faster one leads (6 Oct live: 94% at 2.2 s and flaky vs 92% at
+    # 0.8 s; a stressed user feels the seconds, not 2 points).
+    close = [r for r in leaders if r["score"] >= leaders[0]["score"] - 0.03]
+    leaders = sorted(close, key=lambda r: r["median"]) + [r for r in leaders if r not in close]
     picked = [leaders[0]]
     why.append(f"leader {leaders[0]['model']}: right {leaders[0]['right']:.0%}, wrong actions "
                f"{leaders[0]['wrong_action']:.0%}, {leaders[0]['median']:.1f} s, available {leaders[0]['available']:.0%}")

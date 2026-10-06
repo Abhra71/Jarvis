@@ -566,11 +566,14 @@ class CodeMode:
         ext = "java" if ed.lang == "java" else "cpp"
         out, replies = router.run("code", lambda model: coder.edit(
             model, ed.lang, text, before, (cursor or 0) + 1, previous, f"{ed.file_class or 'Main'}.{ext}",
-            repair=True), tokens=3000)
+            repair=True, timeout=15.0), tokens=3000)
         if out is None:
             log.warning("No coding answer for %r: %s", text, [f"{r.model}:{r.error}" for r in replies])
             return "Sorry, I couldn't work out the code just now. Please say it again."
         kind, say = out.get("kind"), str(out.get("say") or "").strip()
+        say = (say[0].upper() + say[1:]) if say else say
+        if say and say[-1] not in ".?!":
+            say += "?" if kind == "ask" else "."
         if kind == "ignore":
             return ""
         if kind == "ask":

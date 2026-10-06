@@ -62,3 +62,20 @@ class RouterTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HedgeTest(unittest.TestCase):
+    def test_a_slow_first_model_does_not_make_the_user_wait(self):
+        import time
+        from unittest import mock as m
+        with m.patch.object(R, "STATE", Path(tempfile.mkdtemp()) / "s.json"):
+            r = R.Router({"code": ["gemini:slow", "groq:fast"]})
+
+            def attempt(model):
+                if model == "gemini:slow":
+                    time.sleep(1.5)
+                return {"from": model}, Reply(model, text="{}")
+            t = time.monotonic()
+            result, _ = r.run("code", attempt, hedge_after=0.2)
+        self.assertEqual(result, {"from": "groq:fast"})
+        self.assertLess(time.monotonic() - t, 1.0)

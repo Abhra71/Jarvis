@@ -2,7 +2,7 @@
 
 Made by `tools/assign.py --write` from the benchmark results. Do not edit by hand: re-run the benchmarks (`tools/bench.py understand --all`, `tools/bench_coding.py --repair --all`) and this tool.
 
-Updated: 06 Oct 2026 17:23
+Updated: 06 Oct 2026 17:34
 
 ## The chains (the router tries them in this order)
 
@@ -15,13 +15,14 @@ Updated: 06 Oct 2026 17:23
 - then nvidia:nvidia/nemotron-3-super-120b-a12b: right 78%, wrong actions 11%, 3.8 s, available 99%
 - then cloudflare:@cf/openai/gpt-oss-120b: right 78%, wrong actions 12%, 1.9 s, available 99%
 
-**code:** `gemini:gemini-3.5-flash-lite` → `nvidia:nvidia/nemotron-3-super-120b-a12b` → `groq:openai/gpt-oss-120b` → `groq:openai/gpt-oss-20b`
+**code:** `groq:openai/gpt-oss-120b` → `nvidia:nvidia/nemotron-3-super-120b-a12b` → `gemini:gemini-3.5-flash-lite` → `groq:openai/gpt-oss-20b`
 - cloudflare:@cf/meta/llama-3.3-70b-instruct-fp8-fast: not enough data (0 answers)
 - cloudflare:@cf/openai/gpt-oss-120b: not enough data (0 answers)
 - cloudflare:@cf/qwen/qwen3-30b-a3b-fp8: not enough data (0 answers)
-- leader gemini:gemini-3.5-flash-lite: right 94%, wrong actions 2%, 1.6 s, available 100%
+- groq:qwen/qwen3.8-27b: not enough data (41 answers)
+- leader groq:openai/gpt-oss-120b: right 92%, wrong actions 2%, 0.8 s, available 100%
 - then nvidia:nvidia/nemotron-3-super-120b-a12b: right 93%, wrong actions 1%, 5.9 s, available 99%
-- then groq:openai/gpt-oss-120b: right 92%, wrong actions 2%, 0.8 s, available 100%
+- then gemini:gemini-3.5-flash-lite: right 94%, wrong actions 2%, 1.6 s, available 100%
 - then groq:openai/gpt-oss-20b: right 91%, wrong actions 2%, 0.6 s, available 100%
 
 ## Understanding: the user's real sentences
@@ -30,7 +31,7 @@ Each model got the same 167 sentences (a fixed sample of the 537 the user really
 
 | Model | Sentences | Available | Right | Wrong action | Wrong kind | Missing detail | No answer | Median s | Slow 10% s | Tokens in/out (cached) | act | ignore | chat | ask | code | refuse | control |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| groq:qwen/qwen3.8-27b | 152 | 98% | **89%** | 5% | 5% | 0% | 1% | 0.6 | 1.2 | 1417/179 (0) | 71/76 | 19/21 | 9/12 | 10/14 | 17/18 | 5/5 | 5/6 |
+| groq:qwen/qwen3.8-27b | 167 | 98% | **90%** | 5% | 5% | 0% | 1% | 0.6 | 1.2 | 1419/174 (0) | 75/80 | 20/22 | 9/12 | 10/14 | 26/28 | 5/5 | 5/6 |
 | gemini:gemini-3.1-flash-lite | 167 | 82% | **86%** | 8% | 4% | 1% | 2% | 4.4 | 13.9 | 1369/29 (0) | 72/80 | 15/22 | 10/12 | 10/14 | 28/28 | 4/5 | 4/6 |
 | gemini:gemini-3.5-flash-lite | 167 | 100% | **85%** | 8% | 5% | 2% | 0% | 1.0 | 1.3 | 1395/26 (0) | 69/80 | 19/22 | 11/12 | 9/14 | 24/28 | 4/5 | 6/6 |
 | nvidia:nvidia/nemotron-3-super-120b-a12b | 167 | 99% | **78%** | 11% | 8% | 2% | 1% | 3.8 | 8.8 | 1374/387 (0) | 67/80 | 14/22 | 9/12 | 12/14 | 24/28 | 1/5 | 3/6 |
@@ -51,6 +52,7 @@ Each model got the same 167 sentences (a fixed sample of the 537 the user really
 | Model | Cases | Right | User's own | Doesn't compile | Wrong code | Wrote instead of asking | Asked instead of writing | No answer | Median s | Slow 10% s |
 |---|---|---|---|---|---|---|---|---|---|---|
 | gemini:gemini-3.5-flash-lite | 118 | **94%** | 22/25 | 0% | 3% | 2% | 2% | 0% | 1.6 | 2.3 |
+| groq:qwen/qwen3.8-27b | 41 | **93%** | 23/25 | 0% | 2% | 0% | 5% | 0% | 0.6 | 0.9 |
 | nvidia:nvidia/nemotron-3-super-120b-a12b | 118 | **92%** | 21/25 | 0% | 3% | 1% | 3% | 1% | 5.9 | 12.5 |
 | groq:openai/gpt-oss-120b | 118 | **92%** | 21/25 | 0% | 4% | 2% | 2% | 0% | 0.8 | 1.2 |
 | groq:openai/gpt-oss-20b | 118 | **91%** | 22/25 | 0% | 5% | 2% | 3% | 0% | 0.6 | 0.9 |

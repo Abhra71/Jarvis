@@ -57,7 +57,7 @@ class NewBrain:
         screen = self.screen()
         meaning, replies = self.router.run(
             "understand", lambda model: U.understand(model, text, screen, self.history[-2:], unsure, self.profile,
-                                                     coding))
+                                                     coding, timeout=8.0))
         self.history.append(text)
         self.last_meaning = meaning
         if meaning is None:

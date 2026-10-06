@@ -102,16 +102,43 @@ class Router:
                 u.rest_until = now + rest
             self._save_state()
 
-    def run(self, job: str, attempt, tokens: int = 1500, max_models: int = 3):
-        """attempt(model) -> (result, Reply). Tries the chain until one gives a result; returns (result, replies)."""
-        replies = []
-        for model in self.candidates(job, tokens)[:max_models]:
-            result, reply = attempt(model)
-            self.record(reply)
-            replies.append(reply)
-            if result is not None:
-                return result, replies
-        return None, replies
+    def run(self, job: str, attempt, tokens: int = 1500, max_models: int = 3, hedge_after: float | None = 2.5):
+        """attempt(model) -> (result, Reply). Returns (result, replies).
+
+        Hedged (6 Oct, live: one flaky Gemini call plus a slow fallback made a coding answer take 33 s): the first
+        model starts; if it hasn't answered after `hedge_after` seconds (or fails), the next one starts too, and the
+        first good answer wins. A slow or failing provider can't make the user wait. hedge_after=None: one at a time."""
+        import concurrent.futures as cf
+        models = self.candidates(job, tokens)[:max_models]
+        replies: list[Reply] = []
+        if not models:
+            return None, replies
+        pool = cf.ThreadPoolExecutor(max_workers=len(models))
+        running: dict = {}
+        try:
+            nxt = 0
+            running[pool.submit(attempt, models[0])] = models[0]
+            nxt = 1
+            while running:
+                wait = hedge_after if (hedge_after is not None and nxt < len(models)) else None
+                done, _ = cf.wait(running, timeout=wait, return_when=cf.FIRST_COMPLETED)
+                for fut in done:
+                    running.pop(fut)
+                    try:
+                        result, reply = fut.result()
+                    except Exception as e:  # an attempt that crashed is a failure like any other
+                        result, reply = None, Reply("?", error="network", detail=str(e)[:100])
+                    self.record(reply)
+                    replies.append(reply)
+                    if result is not None:
+                        return result, replies
+                if nxt < len(models) and (not done or not running):
+                    # no answer yet in time (hedge), or everything running so far failed: start the next model
+                    running[pool.submit(attempt, models[nxt])] = models[nxt]
+                    nxt += 1
+            return None, replies
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
 
     # ---- state -------------------------------------------------------------------------------------------
     def _u(self, model: str) -> _Use:
