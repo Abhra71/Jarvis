@@ -1,0 +1,36 @@
+{
+ "chains": {
+  "understand": [
+   "groq:qwen/qwen3.8-27b",
+   "gemini:gemini-3.5-flash-lite",
+   "nvidia:nvidia/nemotron-3-super-120b-a12b",
+   "cloudflare:@cf/openai/gpt-oss-120b"
+  ],
+  "code": [
+   "gemini:gemini-3.5-flash-lite",
+   "nvidia:nvidia/nemotron-3-super-120b-a12b",
+   "groq:openai/gpt-oss-120b",
+   "groq:openai/gpt-oss-20b"
+  ]
+ },
+ "why": {
+  "understand": [
+   "gemini:gemini-3.5-flash: not enough data (20 answers)",
+   "gemini:gemini-3.8-flash: not enough data (8 answers)",
+   "gemini:gemma-4-31b-it: not enough data (0 answers)",
+   "leader groq:qwen/qwen3.8-27b: right 90%, wrong actions 5%, 0.6 s, available 98%",
+   "then gemini:gemini-3.5-flash-lite: right 85%, wrong actions 8%, 1.0 s, available 100%",
+   "then nvidia:nvidia/nemotron-3-super-120b-a12b: right 78%, wrong actions 11%, 3.8 s, available 99%",
+   "then cloudflare:@cf/openai/gpt-oss-120b: right 78%, wrong actions 12%, 1.9 s, available 99%"
+  ],
+  "code": [
+   "cloudflare:@cf/meta/llama-3.3-70b-instruct-fp8-fast: not enough data (0 answers)",
+   "cloudflare:@cf/openai/gpt-oss-120b: not enough data (0 answers)",
+   "cloudflare:@cf/qwen/qwen3-30b-a3b-fp8: not enough data (0 answers)",
+   "leader gemini:gemini-3.5-flash-lite: right 94%, wrong actions 2%, 1.6 s, available 100%",
+   "then nvidia:nvidia/nemotron-3-super-120b-a12b: right 93%, wrong actions 1%, 5.9 s, available 99%",
+   "then groq:openai/gpt-oss-120b: right 92%, wrong actions 2%, 0.8 s, available 100%",
+   "then groq:openai/gpt-oss-20b: right 91%, wrong actions 2%, 0.6 s, available 100%"
+  ]
+ }
+}

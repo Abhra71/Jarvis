@@ -5,7 +5,8 @@
 
 Rules (the same for every job):
 1. Score = right answers - 2 x wrong actions (a confident wrong action on the user's PC costs more than a question).
-2. Can lead a chain only if: available >= 95% of calls, median answer <= the job's time budget.
+2. Can lead a chain only if: available >= 95% of calls, median answer <= the job's time budget
+   (understanding 2 s, coding 3 s). Backups: available >= 90% and median <= twice the budget, if any are.
 3. The chain is the best leader, then the next best models, preferring a DIFFERENT provider for each next place
    (one company's outage can't take Jarvis down), up to 4 models.
 4. A model with fewer than 60 graded answers is listed as "not enough data" and never leads.
@@ -23,7 +24,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import bench  # noqa: E402
 import bench_coding  # noqa: E402
 
-BUDGET = {"understand": 2.0, "code": 6.0}  # median seconds a leader may take
+BUDGET = {"understand": 2.0, "code": 3.0}  # median seconds a leader may take (a stressed user won't wait 6 s a line)
 
 
 def rows_understand() -> list[dict]:
@@ -38,7 +39,8 @@ def rows_code() -> list[dict]:
     cs = bench_coding.cases()
     out = []
     for path in sorted(bench_coding._dir(True).glob("*.jsonl")):  # as Jarvis runs it: with the one repair
-        out.append(_summarise(path, lambda r: "error" if r.get("error") else bench_coding.grade(cs[r["id"]], r["out"])[0]))
+        # the grade saved at run time (each answer was compiled then; compiling hundreds again takes minutes)
+        out.append(_summarise(path, lambda r: "error" if r.get("error") else r["grade"]))
     return out
 
 
@@ -74,11 +76,14 @@ def chain(rows: list[dict], budget: float) -> tuple[list[str], list[str]]:
     picked = [leaders[0]]
     why.append(f"leader {leaders[0]['model']}: right {leaders[0]['right']:.0%}, wrong actions "
                f"{leaders[0]['wrong_action']:.0%}, {leaders[0]['median']:.1f} s, available {leaders[0]['available']:.0%}")
-    rest = [r for r in ranked if r is not leaders[0] and r["available"] >= 0.8]
+    # Backups must be usable when needed: available >= 90% and no slower than twice the budget; the rest only if
+    # nothing else is left (6 Oct: a 4.4 s, 82%-available model had been picked over a 1.0 s, 100% one).
+    good = [r for r in ranked if r is not leaders[0] and r["available"] >= 0.9 and r["median"] <= 2 * budget]
+    rest = good + [r for r in ranked if r is not leaders[0] and r not in good and r["available"] >= 0.8]
     while rest and len(picked) < 4:
         used = {p["model"].split(":")[0] for p in picked}
-        other = [r for r in rest if r["model"].split(":")[0] not in used]
-        nxt = (other or rest)[0]
+        other = [r for r in rest if r["model"].split(":")[0] not in used and r in good]
+        nxt = (other or [r for r in rest if r in good] or rest)[0]
         picked.append(nxt)
         rest.remove(nxt)
         why.append(f"then {nxt['model']}: right {nxt['right']:.0%}, wrong actions {nxt['wrong_action']:.0%}, "
