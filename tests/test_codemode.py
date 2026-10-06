@@ -235,3 +235,40 @@ class ArraysAndNavigationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExpertTest(unittest.TestCase):
+    """The rewrite's coding expert in the editor (6 Oct): written only if it compiles, undoable, questions said."""
+
+    class Router:
+        def __init__(self, out):
+            self.out = out
+
+        def run(self, job, attempt, tokens=0):
+            return self.out, []
+
+    MAIN = "public class Main\n{\n    public static void main(String[] args)\n    {\n        int v = 0;\n    }\n}\n"
+
+    def test_an_edit_is_written_and_can_be_undone(self):
+        ed = FakeEditor(self.MAIN, 4, title="Main - Scratch")
+        new = self.MAIN.replace("int v = 0;", 'int v = 0;\n        String s = "AEIOU";')
+        cm = codemode.CodeMode()
+        self.assertEqual(cm.expert("store AEIOU in a string s", ed, self.Router({"kind": "edit", "code": new,
+                                                                              "say": "Added String s."})), "Added String s.")
+        self.assertIn('String s = "AEIOU";', ed.text_)
+        self.assertEqual(ed.cursor, 5)
+        self.assertIn("Undone", cm.undo(ed))
+        self.assertEqual(ed.text_, self.MAIN)
+
+    def test_a_question_is_said_and_nothing_written(self):
+        ed = FakeEditor(self.MAIN, 4, title="Main - Scratch")
+        r = codemode.CodeMode().expert("last index of v", ed, self.Router({"kind": "ask", "say": "Last index of what?"}))
+        self.assertEqual(r, "Last index of what?")
+        self.assertEqual(ed.writes, 0)
+
+    def test_code_that_would_not_compile_is_never_written(self):
+        ed = FakeEditor(self.MAIN, 4, title="Main - Scratch")
+        broken = self.MAIN.replace("int v = 0;", "int v = 0;\n        String v;")
+        r = codemode.CodeMode().expert("create a string v", ed, self.Router({"kind": "edit", "code": broken, "say": "x"}))
+        self.assertIn("would break the code", r)
+        self.assertEqual(ed.writes, 0)

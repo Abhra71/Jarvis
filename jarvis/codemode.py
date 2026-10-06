@@ -554,6 +554,52 @@ class CodeMode:
         _popup(heard, "\n".join(new_lines) or edit.said, edit.said)
         return edit.said
 
+    def expert(self, text: str, ed, router, previous=()) -> str:
+        """The rewrite's coding expert (jarvis/llm/coder.py, chosen by the benchmark: 94% on the coding gold set):
+        any Java/C++ said in plain words becomes an edit of the whole file. It goes through _apply like every other
+        edit: compiled first (never leaves broken code), written, recorded for undo/redo."""
+        from .llm import coder
+        got = ed.read()
+        if got is None:
+            return "I can't read the code in this editor."
+        before, cursor = got
+        ext = "java" if ed.lang == "java" else "cpp"
+        out, replies = router.run("code", lambda model: coder.edit(
+            model, ed.lang, text, before, (cursor or 0) + 1, previous, f"{ed.file_class or 'Main'}.{ext}",
+            repair=True), tokens=3000)
+        if out is None:
+            log.warning("No coding answer for %r: %s", text, [f"{r.model}:{r.error}" for r in replies])
+            return "Sorry, I couldn't work out the code just now. Please say it again."
+        kind, say = out.get("kind"), str(out.get("say") or "").strip()
+        if kind == "ignore":
+            return ""
+        if kind == "ask":
+            return say or "Can you say that another way?"
+        if kind == "cursor":
+            try:
+                line = max(1, int(out.get("line", 1)))
+            except (TypeError, ValueError):
+                return "Which line?"
+            ed.place(line - 1)
+            return say or f"Line {line}."
+        if kind != "edit":
+            return "Sorry, I didn't get that as code."
+        new = str(out.get("code") or "").replace("\r\n", "\n")
+        if not new.strip():
+            return "Sorry, I didn't get that as code."
+        if codeedit.same(new, before):
+            return "That's already there."
+        a, b = before.split("\n"), new.split("\n")
+        i = 0
+        while i < min(len(a), len(b)) and a[i] == b[i]:
+            i += 1
+        j = 0
+        while j < min(len(a), len(b)) - i and a[-1 - j] == b[-1 - j]:
+            j += 1
+        last = len(b) - 1 - j
+        edit = codeedit.Edit(new, max(i, last), say or "Done.", (i, last))
+        return self._apply(ed, before, cursor, edit, check=True, heard=text)
+
     def _write(self, ed, before: str, cursor: int | None, edit: codeedit.Edit) -> str:
         """Fast when the new lines go right below the cursor (End, then paste them); else the whole file."""
         old, new = before.split("\n"), edit.text.split("\n")

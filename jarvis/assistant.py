@@ -321,14 +321,16 @@ class Assistant:
                 return "coding", "Coding mode off."
             if reply == "stop":
                 return "offline rules", "Okay, stopped."
+            if reply in ("undo", "redo") and (ed or editors.current()):
+                ed = ed or editors.current()
+                return "coding", self.codemode.undo(ed) if reply == "undo" else self.codemode.redo(ed)
             return "offline rules", "Okay."
         if route == "code":
             ed = ed or editors.current()
             if not ed:
                 return "coding", "Open BlueJ or VS Code with your file first, then tell me the code."
-            # Phase 2 replaces this with the coding expert (jarvis/llm/coder.py); until then, the Block 2 coder.
-            out = self.codemode.handle(text, ed, unsure)
-            return "coding", out or "I couldn't turn that into code yet."
+            out = self.codemode.expert(text, ed, self.newbrain.router, self.newbrain.history[-3:-1])
+            return "coding", out
         return route, reply or ""
 
     def _dictate(self, text: str, spoken: str) -> str:
