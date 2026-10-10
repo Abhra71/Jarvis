@@ -1,3 +1,13 @@
+> **Archived (10 Oct 2026).** Jarvis is parked in a stable state and no longer developed.
+> - Last state: 356 tests pass; the new brain (`config.toml` `[ai] brain = "new"`, `jarvis/llm/brain2.py`) is on.
+>   It understood ~90% of the user's real sentences on the benchmark (the old brain: ~35% in the live trial).
+> - To run it again: create `.venv` (`python -m venv .venv`, `.venv\Scripts\pip install -r requirements.txt`),
+>   put the API keys in `.env` (see `docs/api-keys-guide.md`), then `start_jarvis.bat`.
+>   Whisper models go in `models/` (not in git).
+> - Not in git (kept locally by the user, if at all): `.env`, `models/`, `data/gold/` (537 labelled sentences),
+>   `data/bench/`, `logs/`.
+> - Where it stood: `docs/handoff.md` and `docs/rewrite-plan.md`.
+
 # Jarvis v2
 
 Background voice assistant for Windows. Say **"Hi Jarvis"**, wait for the beep, then just talk.
